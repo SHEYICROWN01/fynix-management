@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Plus,
   Edit,
@@ -20,14 +21,18 @@ import {
   Users,
   Building2,
   Zap,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 const plans = [
   {
     id: "basic",
     name: "Basic",
-    price: 450,
+    basePrice: 150000,
+    pricePerUser: 5000,
     description: "For small credit unions and cooperatives",
     features: [
       "Up to 50 users",
@@ -36,13 +41,16 @@ const plans = [
       "Email support",
       "Monthly reports",
     ],
+    trialDays: 14,
     subscribers: 28,
-    revenue: "$12,600",
+    revenue: "₦12,600,000",
+    isActive: true,
   },
   {
     id: "professional",
     name: "Professional",
-    price: 890,
+    basePrice: 350000,
+    pricePerUser: 8000,
     description: "For growing financial institutions",
     features: [
       "Up to 200 users",
@@ -52,14 +60,17 @@ const plans = [
       "Real-time analytics",
       "API access",
     ],
+    trialDays: 14,
     subscribers: 45,
-    revenue: "$40,050",
+    revenue: "₦40,050,000",
     popular: true,
+    isActive: true,
   },
   {
     id: "enterprise",
     name: "Enterprise",
-    price: null,
+    basePrice: null,
+    pricePerUser: null,
     description: "For large-scale operations",
     features: [
       "Unlimited users",
@@ -70,8 +81,10 @@ const plans = [
       "White-label options",
       "Compliance tools",
     ],
+    trialDays: 30,
     subscribers: 45,
-    revenue: "$156,000",
+    revenue: "₦156,000,000",
+    isActive: true,
   },
 ];
 
@@ -83,7 +96,7 @@ const activeSubscriptions = [
     users: 156,
     billingCycle: "Annual",
     nextBilling: "Dec 15, 2024",
-    amount: "$29,400",
+    amount: "₦29,400,000",
   },
   {
     tenant: "Metro Credit Union",
@@ -92,7 +105,7 @@ const activeSubscriptions = [
     users: 234,
     billingCycle: "Annual",
     nextBilling: "Nov 02, 2024",
-    amount: "$38,400",
+    amount: "₦38,400,000",
   },
   {
     tenant: "TechStart Bank",
@@ -101,7 +114,7 @@ const activeSubscriptions = [
     users: 42,
     billingCycle: "Monthly",
     nextBilling: "Apr 14, 2024",
-    amount: "$890",
+    amount: "₦890,000",
   },
   {
     tenant: "Summit Cooperative",
@@ -110,7 +123,7 @@ const activeSubscriptions = [
     users: 89,
     billingCycle: "Monthly",
     nextBilling: "Mar 22, 2024",
-    amount: "$890",
+    amount: "₦890,000",
   },
   {
     tenant: "Pine State Bank",
@@ -119,12 +132,83 @@ const activeSubscriptions = [
     users: 45,
     billingCycle: "Monthly",
     nextBilling: "Apr 08, 2024",
-    amount: "$450",
+    amount: "₦450,000",
   },
 ];
 
+const planTenants = {
+  basic: [
+    { name: "Pine State Bank", users: 45, revenue: "₦450,000" },
+    { name: "Coastal Savings Bank", users: 18, revenue: "₦450,000" },
+  ],
+  professional: [
+    { name: "Summit Cooperative", users: 89, revenue: "₦890,000" },
+    { name: "TechStart Bank", users: 42, revenue: "₦890,000" },
+    { name: "Horizon Finance Group", users: 28, revenue: "₦890,000" },
+  ],
+  enterprise: [
+    { name: "Acme Financial Corp", users: 156, revenue: "₦2,450,000" },
+    { name: "Metro Credit Union", users: 234, revenue: "₦3,200,000" },
+    { name: "Valley Credit Services", users: 312, revenue: "₦4,100,000" },
+  ],
+};
+
 export default function Plans() {
+  const { toast } = useToast();
   const [isEditPlanOpen, setIsEditPlanOpen] = useState(false);
+  const [isCreatePlanOpen, setIsCreatePlanOpen] = useState(false);
+  const [isViewTenantsOpen, setIsViewTenantsOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<typeof plans[0] | null>(null);
+  const [newFeature, setNewFeature] = useState("");
+  
+  const [planForm, setPlanForm] = useState({
+    name: "",
+    basePrice: "",
+    pricePerUser: "",
+    description: "",
+    features: [] as string[],
+    trialDays: "14",
+    isActive: true,
+  });
+
+  const handleAddFeature = () => {
+    if (newFeature.trim()) {
+      setPlanForm({
+        ...planForm,
+        features: [...planForm.features, newFeature.trim()],
+      });
+      setNewFeature("");
+    }
+  };
+
+  const handleRemoveFeature = (index: number) => {
+    setPlanForm({
+      ...planForm,
+      features: planForm.features.filter((_, i) => i !== index),
+    });
+  };
+
+  const handleCreatePlan = () => {
+    toast({
+      title: "Plan created",
+      description: `${planForm.name} plan has been created successfully.`,
+    });
+    setIsCreatePlanOpen(false);
+    setPlanForm({
+      name: "",
+      basePrice: "",
+      pricePerUser: "",
+      description: "",
+      features: [],
+      trialDays: "14",
+      isActive: true,
+    });
+  };
+
+  const formatPrice = (price: number | null) => {
+    if (price === null) return "Custom";
+    return `₦${price.toLocaleString()}`;
+  };
 
   return (
     <DashboardLayout title="Plans & Subscriptions">
@@ -163,17 +247,25 @@ export default function Plans() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setIsEditPlanOpen(true)}
+                      onClick={() => {
+                        setSelectedPlan(plan);
+                        setIsEditPlanOpen(true);
+                      }}
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
                   </div>
 
-                  <div className="mb-6">
-                    {plan.price ? (
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-bold">${plan.price}</span>
-                        <span className="text-muted-foreground">/month</span>
+                  <div className="mb-4">
+                    {plan.basePrice !== null ? (
+                      <div className="space-y-1">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-3xl font-bold">{formatPrice(plan.basePrice)}</span>
+                          <span className="text-muted-foreground">/month</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          + {formatPrice(plan.pricePerUser)}/active user
+                        </p>
                       </div>
                     ) : (
                       <span className="text-3xl font-bold">Custom</span>
@@ -189,22 +281,39 @@ export default function Plans() {
                     ))}
                   </ul>
 
-                  <div className="border-t border-border pt-4">
+                  <div className="border-t border-border pt-4 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Subscribers</span>
                       <span className="font-medium">{plan.subscribers}</span>
                     </div>
-                    <div className="mt-2 flex justify-between text-sm">
+                    <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Monthly Revenue</span>
                       <span className="font-medium text-success">{plan.revenue}</span>
                     </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Trial Period</span>
+                      <span className="font-medium">{plan.trialDays} days</span>
+                    </div>
                   </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-4"
+                    onClick={() => {
+                      setSelectedPlan(plan);
+                      setIsViewTenantsOpen(true);
+                    }}
+                  >
+                    <Building2 className="mr-2 h-4 w-4" />
+                    View Tenants ({plan.subscribers})
+                  </Button>
                 </div>
               ))}
             </div>
 
             {/* Add New Plan Button */}
-            <Button variant="outline" className="w-full">
+            <Button variant="outline" className="w-full" onClick={() => setIsCreatePlanOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Create New Plan
             </Button>
@@ -227,7 +336,7 @@ export default function Plans() {
                   <Zap className="h-5 w-5 text-success" />
                 </div>
                 <div>
-                  <p className="text-2xl font-semibold">$208,650</p>
+                  <p className="text-2xl font-semibold">₦208.6M</p>
                   <p className="text-sm text-muted-foreground">Monthly Recurring</p>
                 </div>
               </div>
@@ -368,6 +477,129 @@ export default function Plans() {
           </TabsContent>
         </Tabs>
 
+        {/* Create Plan Dialog */}
+        <Dialog open={isCreatePlanOpen} onOpenChange={setIsCreatePlanOpen}>
+          <DialogContent className="bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Create New Plan</DialogTitle>
+              <DialogDescription>
+                Define a new subscription plan with pricing and features
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="planName">Plan Name *</Label>
+                  <Input
+                    id="planName"
+                    placeholder="e.g. Premium"
+                    value={planForm.name}
+                    onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="trialDays">Trial Duration (days)</Label>
+                  <Input
+                    id="trialDays"
+                    type="number"
+                    placeholder="14"
+                    value={planForm.trialDays}
+                    onChange={(e) => setPlanForm({ ...planForm, trialDays: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="basePrice">Monthly Base Price (₦) *</Label>
+                  <Input
+                    id="basePrice"
+                    type="number"
+                    placeholder="e.g. 250000"
+                    value={planForm.basePrice}
+                    onChange={(e) => setPlanForm({ ...planForm, basePrice: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pricePerUser">Price Per Active User (₦)</Label>
+                  <Input
+                    id="pricePerUser"
+                    type="number"
+                    placeholder="e.g. 6000"
+                    value={planForm.pricePerUser}
+                    onChange={(e) => setPlanForm({ ...planForm, pricePerUser: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="planDesc">Description</Label>
+                <Textarea
+                  id="planDesc"
+                  placeholder="Brief description of this plan"
+                  value={planForm.description}
+                  onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Included Features</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Add a feature"
+                    value={newFeature}
+                    onChange={(e) => setNewFeature(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddFeature()}
+                  />
+                  <Button type="button" variant="outline" onClick={handleAddFeature}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {planForm.features.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {planForm.features.map((feature, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between rounded-md bg-muted px-3 py-2 text-sm"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-success" />
+                          {feature}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => handleRemoveFeature(index)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+                <div>
+                  <p className="font-medium text-sm">Active</p>
+                  <p className="text-xs text-muted-foreground">
+                    Make this plan available for new subscriptions
+                  </p>
+                </div>
+                <Switch
+                  checked={planForm.isActive}
+                  onCheckedChange={(checked) => setPlanForm({ ...planForm, isActive: checked })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsCreatePlanOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreatePlan}>Create Plan</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Edit Plan Dialog */}
         <Dialog open={isEditPlanOpen} onOpenChange={setIsEditPlanOpen}>
           <DialogContent className="bg-card sm:max-w-md">
@@ -377,28 +609,116 @@ export default function Plans() {
                 Update plan details and pricing
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="planName">Plan Name</Label>
-                <Input id="planName" defaultValue="Professional" />
+            {selectedPlan && (
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="editPlanName">Plan Name</Label>
+                  <Input id="editPlanName" defaultValue={selectedPlan.name} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editBasePrice">Base Price (₦)</Label>
+                    <Input
+                      id="editBasePrice"
+                      type="number"
+                      defaultValue={selectedPlan.basePrice || ""}
+                      placeholder="Custom pricing"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editPricePerUser">Per User (₦)</Label>
+                    <Input
+                      id="editPricePerUser"
+                      type="number"
+                      defaultValue={selectedPlan.pricePerUser || ""}
+                      placeholder="N/A"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editPlanDesc">Description</Label>
+                  <Input
+                    id="editPlanDesc"
+                    defaultValue={selectedPlan.description}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editTrialDays">Trial Duration (days)</Label>
+                  <Input
+                    id="editTrialDays"
+                    type="number"
+                    defaultValue={selectedPlan.trialDays}
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-border p-4">
+                  <div>
+                    <p className="font-medium text-sm">Active</p>
+                    <p className="text-xs text-muted-foreground">
+                      Available for new subscriptions
+                    </p>
+                  </div>
+                  <Switch defaultChecked={selectedPlan.isActive} />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="planPrice">Monthly Price ($)</Label>
-                <Input id="planPrice" type="number" defaultValue="890" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="planDesc">Description</Label>
-                <Input
-                  id="planDesc"
-                  defaultValue="For growing financial institutions"
-                />
-              </div>
-            </div>
+            )}
             <DialogFooter>
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Deactivate
+              </Button>
               <Button variant="outline" onClick={() => setIsEditPlanOpen(false)}>
                 Cancel
               </Button>
               <Button onClick={() => setIsEditPlanOpen(false)}>Save Changes</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* View Tenants on Plan Dialog */}
+        <Dialog open={isViewTenantsOpen} onOpenChange={setIsViewTenantsOpen}>
+          <DialogContent className="bg-card sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {selectedPlan?.name} Plan Subscribers
+              </DialogTitle>
+              <DialogDescription>
+                {selectedPlan?.subscribers} tenants on this plan
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              {selectedPlan && planTenants[selectedPlan.id as keyof typeof planTenants] && (
+                <div className="space-y-3">
+                  {planTenants[selectedPlan.id as keyof typeof planTenants].map((tenant) => (
+                    <div
+                      key={tenant.name}
+                      className="flex items-center justify-between rounded-lg border border-border p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                          <Building2 className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">{tenant.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {tenant.users} users
+                          </p>
+                        </div>
+                      </div>
+                      <span className="font-medium text-sm text-success">
+                        {tenant.revenue}/mo
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsViewTenantsOpen(false)}>
+                Close
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

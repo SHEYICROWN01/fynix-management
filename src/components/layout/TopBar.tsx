@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 interface TopBarProps {
   title: string;
@@ -21,7 +22,7 @@ export function TopBar({ title }: TopBarProps) {
         <h1 className="text-xl font-semibold text-foreground">{title}</h1>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2">
         {/* Search */}
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -30,6 +31,9 @@ export function TopBar({ title }: TopBarProps) {
             className="w-64 pl-9 bg-background"
           />
         </div>
+
+        {/* Theme Toggle */}
+        <ThemeToggle />
 
         {/* Notifications */}
         <DropdownMenu>
