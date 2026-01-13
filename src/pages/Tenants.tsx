@@ -369,12 +369,11 @@ const tenantsData = [
 
 // Helper function to format currency
 function formatNaira(amount: number): string {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
+  const formatted = new Intl.NumberFormat("en-NG", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount).replace("NGN", "₦");
+  }).format(amount);
+  return `₦${formatted}`;
 }
 
 // Billing status badge component
