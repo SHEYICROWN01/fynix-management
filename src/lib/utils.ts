@@ -4,3 +4,12 @@ import { twMerge } from "tailwind-merge";
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+/** Safely extracts a message string from an unknown catch-block error. */
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String((error as Record<string, unknown>).message);
+  }
+  return "An unexpected error occurred";
+}

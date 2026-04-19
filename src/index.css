@@ -1,10 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 /* Fynix CoBank Design System - Enterprise Fintech Admin */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @layer base {
   :root {
@@ -37,7 +37,7 @@
     /* Status Colors */
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
-    
+
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
@@ -121,7 +121,12 @@
     font-family: 'Inter', system-ui, sans-serif;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-semibold tracking-tight;
   }
 }
@@ -193,6 +198,7 @@
     from {
       opacity: 0;
     }
+
     to {
       opacity: 1;
     }
@@ -203,6 +209,7 @@
       opacity: 0;
       transform: translateY(-10px);
     }
+
     to {
       opacity: 1;
       transform: translateY(0);

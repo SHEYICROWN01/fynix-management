@@ -1,9 +1,9 @@
 import { cn } from "@/lib/utils";
 
-type StatusType = "active" | "suspended" | "trial" | "pending" | "paid" | "failed" | "overdue";
+type StatusType = "active" | "suspended" | "trial" | "pending" | "paid" | "failed" | "overdue" | "cancelled";
 
 interface StatusBadgeProps {
-  status: StatusType;
+  status: StatusType | undefined;
   className?: string;
 }
 
@@ -36,15 +36,21 @@ const statusConfig: Record<StatusType, { label: string; className: string }> = {
     label: "Overdue",
     className: "status-trial",
   },
+  cancelled: {
+    label: "Cancelled",
+    className: "status-suspended",
+  },
 };
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
-  const config = statusConfig[status];
+  // Handle undefined or invalid status
+  const validStatus = status && status in statusConfig ? status : "pending";
+  const config = statusConfig[validStatus];
 
   return (
-    <span className={cn("status-badge", config.className, className)}>
-      <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-current" />
-      {config.label}
-    </span>
+    <span className= { cn("status-badge", config.className, className) } >
+    <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-current" />
+      { config.label }
+      </span>
   );
 }
