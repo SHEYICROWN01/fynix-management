@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Bell, Search, ChevronDown, Wifi, WifiOff, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Bell, Search, ChevronDown, WifiOff, AlertTriangle, CheckCircle2, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,9 +19,10 @@ import type { HealthCheckResponse } from "@/lib/api";
 
 interface TopBarProps {
   title: string;
+  onMenuClick?: () => void;
 }
 
-export function TopBar({ title }: TopBarProps) {
+export function TopBar({ title, onMenuClick }: TopBarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -82,9 +83,17 @@ export function TopBar({ title }: TopBarProps) {
   };
 
   return (
-    <header className= "sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-6" >
-    <div className="flex items-center gap-4" >
-      <h1 className="text-xl font-semibold text-foreground" > { title } </h1>
+    <header className= "sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-4 md:px-6" >
+    <div className="flex items-center gap-3" >
+      {/* Mobile hamburger */ }
+      < button
+  onClick = { onMenuClick }
+  className = "lg:hidden p-1.5 rounded-md hover:bg-muted text-muted-foreground"
+    >
+    <Menu className="h-5 w-5" />
+      </button>
+
+      < h1 className = "text-base md:text-xl font-semibold text-foreground truncate max-w-[160px] sm:max-w-none" > { title } </h1>
 
   {/* Live Health Status Indicator */ }
   <button
@@ -117,8 +126,7 @@ export function TopBar({ title }: TopBarProps) {
   </div>
 
   < div className = "flex items-center gap-2" >
-    {/* Search */ }
-    < div className = "relative hidden md:block" >
+    {/* Search */ } < div className = "relative hidden md:block" >
       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
             placeholder="Search..."
