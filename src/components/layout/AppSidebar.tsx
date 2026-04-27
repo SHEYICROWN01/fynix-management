@@ -1,20 +1,9 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard,
-  Building2,
-  Package,
-  CreditCard,
-  Receipt,
-  BarChart3,
-  Shield,
-  Users,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  LogOut,
-  HeartPulse,
-  X,
+  LayoutDashboard, Building2, Package, CreditCard, Receipt,
+  BarChart3, Shield, Users, Settings, ChevronLeft, ChevronRight,
+  LogOut, HeartPulse, X, MessageSquare,
 } from "lucide-react";
 
 const navigationItems = [
@@ -24,6 +13,7 @@ const navigationItems = [
   { title: "Plans & Subscriptions", icon: CreditCard, href: "/plans" },
   { title: "Billing & Revenue", icon: Receipt, href: "/billing" },
   { title: "Analytics", icon: BarChart3, href: "/analytics" },
+  { title: "SMS Management", icon: MessageSquare, href: "/sms" },
   { title: "Security & Logs", icon: Shield, href: "/security" },
   { title: "System Health", icon: HeartPulse, href: "/system-health" },
   { title: "System Users", icon: Users, href: "/users" },
