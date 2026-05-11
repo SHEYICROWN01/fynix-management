@@ -2348,10 +2348,10 @@ style = {{ backgroundColor: selectedTenant.branding.accent_color }}
 {/* Footer */ }
 <div className="flex items-center justify-between gap-3 px-6 py-4 border-t bg-muted/20 rounded-b-lg" >
   <p className="text-xs text-muted-foreground" >
-    { "Tenant ID: "} < code className = "font-mono" > { "#"}{ selectedTenant.id } </code>
+    {"Tenant ID: "}<code className="font-mono">{"#"}{selectedTenant.id}</code>
 {
   selectedTenant.institution_code && (
-    <span>{ " \u00b7 Code: "} < code className = "font-mono font-semibold" > { selectedTenant.institution_code } < /code></span >
+    <span>{" \u00b7 Code: "}<code className="font-mono font-semibold">{selectedTenant.institution_code}</code></span>
     )
 }
 </p>

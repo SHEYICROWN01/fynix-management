@@ -12,9 +12,12 @@ dist
 dist-ssr
 *.local
 
-# Environment files (keep .env.production as template)
+# Environment files — only .env.example is committed
+# Each environment (local / Vercel) manages its own values
 .env
 .env.local
+.env.development
+.env.production
 
 # Editor directories and files
 .vscode/*

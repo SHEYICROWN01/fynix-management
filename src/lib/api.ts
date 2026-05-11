@@ -306,7 +306,7 @@ class ApiService {
         localStorage.removeItem("user");
     }
 
-    private async request<T>(
+    async request<T>(
         endpoint: string,
         options: RequestInit = {},
         retryCount: number = 0
@@ -365,7 +365,7 @@ class ApiService {
                 };
             }
 
-            const data = await response.json();
+            const data = await response.json().catch(() => ({}));
 
             if (!response.ok) {
                 // Handle 401 Unauthorized - session expired
@@ -375,7 +375,8 @@ class ApiService {
                         this.onUnauthorized();
                     }
                 }
-                throw data;
+                // Always embed the HTTP status so callers can branch on it (e.g. 404 = not found)
+                throw { ...data, status: response.status };
             }
 
             return data;
@@ -387,7 +388,9 @@ class ApiService {
                     this.onUnauthorized();
                 }
             }
-            if (error && typeof error === "object" && "message" in error) {
+            // Re-throw API errors as-is (they already carry `status` from the throw above).
+            // Only replace with a generic network error when there's truly no structured error object.
+            if (error && typeof error === "object") {
                 throw error;
             }
             throw {
@@ -764,7 +767,517 @@ interface ModuleResponse {
     data: Module;
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SMS Provider Interfaces
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export interface SmsProviderConfig {
+    id: number;
+    provider: string;
+    api_base_url: string;
+    api_key_hint: string;
+    secret_key_hint: string | null;
+    sender_id: string;
+    channel: string;
+    webhook_url: string | null;
+    default_charge_per_sms: string;
+    provider_cost_per_sms: string;
+    profit_margin_percent: number;
+    low_balance_threshold: number;
+    max_retries: number;
+    failure_rate_alert_threshold: string;
+    mask_phone_numbers: boolean;
+    require_2fa_for_key_rotation: boolean;
+    auto_suspend_on_depletion: boolean;
+    log_retention_days: number;
+    is_active: boolean;
+    last_test_at: string | null;
+    last_test_status: "success" | "failed" | null;
+    updated_at: string;
+    updated_by: string | null;
+    provider_balance: number | null;
+    provider_balance_currency: string | null;
+    provider_balance_error: string | null;
+    provider_balance_fetched_at: string | null;
+}
+
+export interface ProviderBalanceResponse {
+    provider: string;
+    balance: number;
+    currency: string;
+    fetched_at: string;
+}
+
+export interface SaveSmsProviderPayload {
+    provider: string;
+    api_key?: string;
+    secret_key?: string;
+    api_base_url: string;
+    sender_id: string;
+    channel: string;
+    webhook_url?: string;
+    default_charge_per_sms: number;
+    provider_cost_per_sms: number;
+    low_balance_threshold: number;
+    max_retries: number;
+    failure_rate_alert_threshold: number;
+    mask_phone_numbers: boolean;
+    require_2fa_for_key_rotation: boolean;
+    auto_suspend_on_depletion: boolean;
+    log_retention_days: number;
+}
+
+export interface SmsProviderResponse {
+    success: boolean;
+    message: string;
+    data: SmsProviderConfig;
+}
+
+export interface SmsTestResponse {
+    success: boolean;
+    message: string;
+    data: {
+        phone: string;
+        provider: string;
+        message_id: string;
+        status: string;
+        sent_at: string;
+    };
+}
+
+export interface SmsRotateKeyResponse {
+    success: boolean;
+    message: string;
+    data: {
+        api_key_hint: string;
+        rotated_at: string;
+    };
+}
+
+// ─── SMS Provider API methods (added to ApiService below via extension) ───────
+
+class SmsProviderApiService {
+    // GET /admin/sms/provider
+    async getConfig(): Promise<SmsProviderResponse> {
+        return api.request<SmsProviderResponse>("/admin/sms/provider");
+    }
+
+    // POST /admin/sms/provider
+    async saveConfig(payload: SaveSmsProviderPayload): Promise<SmsProviderResponse> {
+        return api.request<SmsProviderResponse>("/admin/sms/provider", {
+            method: "POST",
+            body: JSON.stringify(payload),
+        });
+    }
+
+    // POST /admin/sms/provider/test
+    async testConnection(phone: string): Promise<SmsTestResponse> {
+        return api.request<SmsTestResponse>("/admin/sms/provider/test", {
+            method: "POST",
+            body: JSON.stringify({ phone }),
+        });
+    }
+
+    // GET /admin/sms/provider/balance — live refresh from Termii
+    async getProviderBalance(): Promise<ProviderBalanceResponse> {
+        const res = await api.request<{ success: boolean; data: ProviderBalanceResponse }>(
+            "/admin/sms/provider/balance"
+        );
+        return res.data;
+    }
+
+    // POST /admin/sms/provider/rotate-key
+    async rotateKey(new_api_key: string, otp_code?: string): Promise<SmsRotateKeyResponse> {
+        return api.request<SmsRotateKeyResponse>("/admin/sms/provider/rotate-key", {
+            method: "POST",
+            body: JSON.stringify({ new_api_key, ...(otp_code ? { otp_code } : {}) }),
+        });
+    }
+}
+
+
+// ─── SMS Management Types ─────────────────────────────────────────────────────
+
+export interface SmsDashboard {
+    total_wallet_balance: number;
+    total_sms_sent_all_time: number;
+    total_sms_sent_today: number;
+    avg_profit_margin_percent: number;
+    total_revenue_all_time: number;
+    total_provider_cost_all_time: number;
+    total_net_profit_all_time: number;
+    total_revenue_today: number;
+    total_provider_cost_today: number;
+    total_net_profit_today: number;
+    low_balance_count: number;
+    suspended_count: number;
+    high_failure_rate_count: number;
+    as_of?: string;
+}
+
+export interface SmsTodayBreakdownItem {
+    institution_id: number;
+    institution_name: string;
+    sms_sent_today: number;
+    charge_per_sms: number;
+    provider_cost_per_sms: number;
+    revenue_today: number;
+    cost_today: number;
+    profit_today: number;
+    margin_percent: number;
+}
+
+export interface SmsTodayTotals {
+    sms_sent_today: number;
+    revenue_today: number;
+    cost_today: number;
+    profit_today: number;
+}
+
+export interface SmsInstitution {
+    id: number;
+    name: string;
+    has_wallet: boolean;
+    sms_balance: number;
+    total_sms_sent: number;
+    sms_sent_today: number;
+    charge_per_sms: number;
+    provider_cost_per_sms: number;
+    profit_per_sms: number;
+    margin_percent: number;
+    total_revenue: number;
+    total_cost: number;
+    total_profit: number;
+    failure_rate_percent: number;
+    last_activity_at: string | null;
+    status: "active" | "low_balance" | "suspended";
+}
+
+export interface SmsInstitutionDetail extends SmsInstitution {
+    revenue_today: number;
+    cost_today: number;
+    profit_today: number;
+}
+
+export interface SmsLog {
+    id: number;
+    phone: string;
+    type: string;
+    status: "sent" | "delivered" | "failed" | "expired" | "rejected";
+    sent_at: string;
+    failure_reason: string | null;
+    provider_message_id: string | null;
+    charge: number;
+    provider_cost: number;
+}
+
+export interface SmsTrendItem {
+    date: string;
+    sms_sent: number;
+    revenue: number;
+    cost: number;
+    profit: number;
+}
+
+export interface SmsRevenueTrendItem {
+    date: string;
+    total_sms: number;
+    revenue: number;
+    cost: number;
+    profit: number;
+}
+
+export interface SmsMonthlyProfitItem {
+    month: string;
+    year: number;
+    revenue: number;
+    cost: number;
+    profit: number;
+}
+
+export interface SmsLeaderboardItem {
+    rank: number;
+    institution_id: number;
+    institution_name: string;
+    charge_per_sms: number;
+    total_profit: number;
+    profit_percent_of_max: number;
+}
+
+export interface SmsAlertItem {
+    institution_id: number;
+    name: string;
+    balance?: number;
+    failure_rate_percent?: number;
+}
+
+export interface SmsAlerts {
+    low_balance: SmsAlertItem[];
+    suspended: SmsAlertItem[];
+    high_failure_rate: SmsAlertItem[];
+}
+
+export interface SmsSettings {
+    default_charge_per_sms: number;
+    provider_cost_per_sms: number;
+    default_margin_percent?: number;
+    low_balance_threshold: number;
+    default_sender_id: string;
+    max_retries: number;
+    failure_alert_threshold_percent: number;
+}
+
+export interface CreateWalletPayload {
+    charge_per_sms?: number;
+    sender_id?: string;
+}
+
+export interface CreateWalletResponse {
+    institution_id: number;
+    institution_name: string;
+    sms_balance: number;
+    charge_per_sms: number;
+    status: "active";
+    created_at: string;
+}
+
+export interface FundInstitutionPayload {
+    amount: number;
+    charge_per_sms: number;
+    note?: string;
+}
+
+export interface FundInstitutionResponse {
+    institution_id: number;
+    institution_name: string;
+    units_credited: number;
+    amount_paid_ngn: number;
+    charge_per_sms: number;
+    previous_balance: number;
+    new_balance: number;
+    your_profit: number;
+    funded_at: string;
+    funded_by: string;
+}
+
+export interface UpdateRatePayload {
+    charge_per_sms: number;
+    reason?: string;
+}
+
+export interface UpdateRateResponse {
+    institution_id: number;
+    institution_name: string;
+    old_charge_per_sms: number;
+    new_charge_per_sms: number;
+    provider_cost_per_sms: number;
+    new_margin_percent: number;
+    updated_at: string;
+    updated_by: string;
+}
+
+export interface UpdateStatusPayload {
+    status: "active" | "suspended";
+}
+
+export interface UpdateStatusResponse {
+    institution_id: number;
+    status: "active" | "suspended";
+}
+
+export interface BulkFundItem {
+    id: number;
+    amount: number;
+    charge_per_sms: number;
+}
+
+export interface BulkFundPayload {
+    institutions: BulkFundItem[];
+    note?: string;
+}
+
+export interface BulkFundResult {
+    institution_id: number;
+    units_credited: number;
+    new_balance: number;
+}
+
+export interface BulkFundResponse {
+    total_amount_ngn: number;
+    total_units_credited: number;
+    total_your_profit: number;
+    results: BulkFundResult[];
+}
+
+// ─── SMS Management API Service ───────────────────────────────────────────────
+
+type ApiResp<T> = { success: boolean; data: T };
+
+class SmsManagementApiService extends ApiService {
+    async getDashboard(): Promise<SmsDashboard> {
+        const res = await this.request<ApiResp<SmsDashboard>>("/admin/sms/dashboard");
+        return res.data;
+    }
+
+    async getTodayBreakdown(): Promise<{ institutions: SmsTodayBreakdownItem[]; totals: SmsTodayTotals; date: string }> {
+        const res = await this.request<{
+            success: boolean;
+            data: SmsTodayBreakdownItem[];
+            totals: SmsTodayTotals;
+            date: string;
+        }>("/admin/sms/today-breakdown");
+        return {
+            institutions: res?.data ?? [],
+            totals: res?.totals ?? { sms_sent_today: 0, revenue_today: 0, cost_today: 0, profit_today: 0 },
+            date: res?.date ?? "",
+        };
+    }
+
+    async getInstitutions(params: Record<string, string | number> = {}): Promise<{
+        institutions: SmsInstitution[];
+        total: number;
+        total_pages: number;
+        page: number;
+    }> {
+        const qs = new URLSearchParams(
+            Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]))
+        ).toString();
+        const res = await this.request<{
+            success: boolean;
+            data: SmsInstitution[];
+            pagination: { total: number; total_pages: number; page: number };
+        }>(`/admin/sms/institutions${qs ? "?" + qs : ""}`);
+        return {
+            institutions: res?.data ?? [],
+            total: res?.pagination?.total ?? 0,
+            total_pages: res?.pagination?.total_pages ?? 1,
+            page: res?.pagination?.page ?? 1,
+        };
+    }
+
+    async getInstitution(id: number): Promise<SmsInstitutionDetail> {
+        const res = await this.request<ApiResp<SmsInstitutionDetail>>(`/admin/sms/institutions/${id}`);
+        return res.data;
+    }
+
+    async getLogs(id: number, params: Record<string, string | number> = {}): Promise<{
+        logs: SmsLog[];
+        total: number;
+        page: number;
+    }> {
+        const qs = new URLSearchParams(
+            Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]))
+        ).toString();
+        const res = await this.request<{
+            success: boolean;
+            data: SmsLog[];
+            pagination: { total: number; page: number };
+        }>(`/admin/sms/institutions/${id}/logs${qs ? "?" + qs : ""}`);
+        return {
+            logs: res?.data ?? [],
+            total: res?.pagination?.total ?? 0,
+            page: res?.pagination?.page ?? 1,
+        };
+    }
+
+    async getTrend(id: number, days = 7): Promise<SmsTrendItem[]> {
+        const res = await this.request<ApiResp<SmsTrendItem[]>>(
+            `/admin/sms/institutions/${id}/trend?days=${days}`
+        );
+        return res?.data ?? [];
+    }
+
+    async createWallet(id: number, payload: CreateWalletPayload = {}): Promise<CreateWalletResponse> {
+        const res = await this.request<{ success: boolean; message: string; data: CreateWalletResponse }>(
+            `/admin/sms/institutions/${id}/wallet`,
+            { method: "POST", body: JSON.stringify(payload) }
+        );
+        return res.data;
+    }
+
+    async fundInstitution(id: number, payload: FundInstitutionPayload): Promise<FundInstitutionResponse> {
+        const res = await this.request<{ success: boolean; message: string; data: FundInstitutionResponse }>(
+            `/admin/sms/institutions/${id}/fund`,
+            { method: "POST", body: JSON.stringify(payload) }
+        );
+        return res.data;
+    }
+
+    async updateRate(id: number, payload: UpdateRatePayload): Promise<UpdateRateResponse> {
+        const res = await this.request<{ success: boolean; message: string; data: UpdateRateResponse }>(
+            `/admin/sms/institutions/${id}/rate`,
+            { method: "PATCH", body: JSON.stringify(payload) }
+        );
+        return res.data;
+    }
+
+    async updateStatus(id: number, payload: UpdateStatusPayload): Promise<UpdateStatusResponse> {
+        const res = await this.request<{ success: boolean; message: string; data: UpdateStatusResponse }>(
+            `/admin/sms/institutions/${id}/status`,
+            { method: "PATCH", body: JSON.stringify(payload) }
+        );
+        return res.data;
+    }
+
+    async getRevenueTrend(days = 7): Promise<SmsRevenueTrendItem[]> {
+        const res = await this.request<ApiResp<SmsRevenueTrendItem[]>>(
+            `/admin/sms/charts/revenue-trend?days=${days}`
+        );
+        return res?.data ?? [];
+    }
+
+    async getMonthlyProfit(): Promise<SmsMonthlyProfitItem[]> {
+        const res = await this.request<ApiResp<SmsMonthlyProfitItem[]>>("/admin/sms/charts/monthly-profit");
+        return res?.data ?? [];
+    }
+
+    async getLeaderboard(): Promise<SmsLeaderboardItem[]> {
+        const res = await this.request<ApiResp<SmsLeaderboardItem[]>>("/admin/sms/leaderboard");
+        return res?.data ?? [];
+    }
+
+    async bulkFund(payload: BulkFundPayload): Promise<BulkFundResponse> {
+        const res = await this.request<{ success: boolean; message: string; data: BulkFundResponse }>(
+            "/admin/sms/institutions/bulk-fund",
+            { method: "POST", body: JSON.stringify(payload) }
+        );
+        return res.data;
+    }
+
+    getExportUrl(id: number, params: Record<string, string> = {}): string {
+        const token = localStorage.getItem("access_token") ?? "";
+        const qs = new URLSearchParams({ ...params, token }).toString();
+        const base = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api";
+        return `${base}/admin/sms/institutions/${id}/logs/export?${qs}`;
+    }
+
+    async getAlerts(): Promise<SmsAlerts> {
+        const res = await this.request<ApiResp<SmsAlerts>>("/admin/sms/alerts");
+        const d = res?.data;
+        return {
+            low_balance: Array.isArray(d?.low_balance) ? d.low_balance : [],
+            suspended: Array.isArray(d?.suspended) ? d.suspended : [],
+            high_failure_rate: Array.isArray(d?.high_failure_rate) ? d.high_failure_rate : [],
+        };
+    }
+
+    async getSettings(): Promise<SmsSettings> {
+        const res = await this.request<ApiResp<SmsSettings>>("/admin/sms/settings");
+        return res.data;
+    }
+
+    async saveSettings(payload: Omit<SmsSettings, "default_margin_percent">): Promise<void> {
+        await this.request<{ success: boolean; message: string }>("/admin/sms/settings", {
+            method: "POST",
+            body: JSON.stringify(payload),
+        });
+    }
+}
+
 export const api = new ApiService();
+export const smsProviderApi = new SmsProviderApiService();
+export const smsManagementApi = new SmsManagementApiService();
+
 export type {
     LoginCredentials,
     LoginResponse,
