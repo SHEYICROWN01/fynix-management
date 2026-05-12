@@ -585,11 +585,39 @@ export default function SmsManagement() {
     if (!editRateTarget) return;
     setEditRateLoading(true);
     try {
-      const res = await smsManagementApi.updateRate(editRateTarget.id, {
-        charge_per_sms: parseFloat(editRateValue),
-        reason: editRateReason || undefined,
-      });
-      setEditRateResult(res);
+      // If institution doesn't have a wallet, create one first
+      if (!editRateTarget.has_wallet) {
+        await smsManagementApi.createWallet(editRateTarget.id, {
+          charge_per_sms: parseFloat(editRateValue),
+        });
+        showToast.success(`SMS wallet created for ${editRateTarget.name} with rate ₦${editRateValue}/SMS`);
+        setEditRateResult({
+          institution_id: editRateTarget.id,
+          institution_name: editRateTarget.name,
+          old_charge_per_sms: 0,
+          new_charge_per_sms: parseFloat(editRateValue),
+          provider_cost_per_sms: editRateTarget.provider_cost_per_sms,
+          new_margin_percent: ((parseFloat(editRateValue) - editRateTarget.provider_cost_per_sms) / parseFloat(editRateValue)) * 100,
+          updated_at: new Date().toISOString(),
+          updated_by: "Admin",
+        });
+      } else {
+        // Try to update rate - if endpoint doesn't exist, show helpful message
+        try {
+          const res = await smsManagementApi.updateRate(editRateTarget.id, {
+            charge_per_sms: parseFloat(editRateValue),
+            reason: editRateReason || undefined,
+          });
+          setEditRateResult(res);
+        } catch (err: unknown) {
+          const errMsg = (err as Error).message || "";
+          if (errMsg.includes("404") || errMsg.toLowerCase().includes("not found")) {
+            showToast.error("Rate update endpoint not available. Please contact the institution to update their rate, or fund their wallet with the new rate.");
+          } else {
+            throw err;
+          }
+        }
+      }
       setRowLoading((r) => { const n = { ...r }; delete n[editRateTarget.id]; return n; });
       loadInstitutions(instPage, instSearch, instStatus, instSort, instOrder);
     } catch (e: unknown) {
