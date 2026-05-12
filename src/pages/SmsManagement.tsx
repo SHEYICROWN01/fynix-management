@@ -503,11 +503,11 @@ export default function SmsManagement() {
     try {
       const amount = parseFloat(fundAmount.replace(/,/g, ""));
       // Ensure charge_per_sms is always a valid number, falling back to default if needed
-      const charge_per_sms = parseFloat(fundChargePerSms) || 
-                             fundTarget.charge_per_sms || 
-                             settingsForm.default_charge_per_sms || 
-                             2.5; // Final fallback
-      
+      const charge_per_sms = parseFloat(fundChargePerSms) ||
+        fundTarget.charge_per_sms ||
+        settingsForm.default_charge_per_sms ||
+        2.5; // Final fallback
+
       // Validate that we have valid numbers before proceeding
       if (isNaN(amount) || amount <= 0) {
         showToast.error("Please enter a valid amount");
@@ -519,11 +519,19 @@ export default function SmsManagement() {
         setFundLoading(false);
         return;
       }
-      
+
       const units_credited = Math.floor(amount / charge_per_sms);
-      const res = await smsManagementApi.fundInstitution(fundTarget.id, {
-        amount, charge_per_sms, note: fundNote || undefined,
-      });
+      
+      // Build payload - only include note if it has a value
+      const payload: { amount: number; charge_per_sms: number; note?: string } = {
+        amount,
+        charge_per_sms,
+      };
+      if (fundNote && fundNote.trim()) {
+        payload.note = fundNote.trim();
+      }
+      
+      const res = await smsManagementApi.fundInstitution(fundTarget.id, payload);
       // Build receipt from response data if present, otherwise derive from what we sent
       setFundResult({
         institution_id: res?.institution_id ?? fundTarget.id,
@@ -544,7 +552,7 @@ export default function SmsManagement() {
       const msg = (e as Error).message || "";
       console.error("Fund institution error:", e);
       console.error("Payload sent:", { institution_id: fundTarget.id, amount: parseFloat(fundAmount.replace(/,/g, "")), charge_per_sms: parseFloat(fundChargePerSms) || fundTarget.charge_per_sms || settingsForm.default_charge_per_sms || 2.5 });
-      
+
       if (msg.toLowerCase().includes("wallet") || msg.toLowerCase().includes("404")) {
         setFundNoWallet(true);
       } else {
@@ -1778,12 +1786,12 @@ className = "gap-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 ho
       < div className = "grid grid-cols-2 md:grid-cols-4 gap-3" >
       {
         [
-        { label: "SMS Balance", value: fmt(viewTarget.sms_balance), sub: "units", color: (viewTarget.sms_balance ?? 0) < 3000 ? "text-amber-600" : "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/20" },
-        { label: "Total Sent", value: fmt(viewTarget.total_sms_sent), sub: "all time", color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/20" },
-        { label: "Revenue", value: fmtM(viewTarget.total_revenue), sub: "earned", color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/20" },
-        { label: "Failure Rate", value: `${(viewTarget.failure_rate_percent ?? 0).toFixed(1)}%`, sub: "delivery", color: (viewTarget.failure_rate_percent ?? 0) > 2 ? "text-rose-500" : "text-emerald-600", bg: (viewTarget.failure_rate_percent ?? 0) > 2 ? "bg-rose-50 dark:bg-rose-950/20" : "bg-emerald-50 dark:bg-emerald-950/20" },
+          { label: "SMS Balance", value: fmt(viewTarget.sms_balance), sub: "units", color: (viewTarget.sms_balance ?? 0) < 3000 ? "text-amber-600" : "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/20" },
+          { label: "Total Sent", value: fmt(viewTarget.total_sms_sent), sub: "all time", color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/20" },
+          { label: "Revenue", value: fmtM(viewTarget.total_revenue), sub: "earned", color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/20" },
+          { label: "Failure Rate", value: `${(viewTarget.failure_rate_percent ?? 0).toFixed(1)}%`, sub: "delivery", color: (viewTarget.failure_rate_percent ?? 0) > 2 ? "text-rose-500" : "text-emerald-600", bg: (viewTarget.failure_rate_percent ?? 0) > 2 ? "bg-rose-50 dark:bg-rose-950/20" : "bg-emerald-50 dark:bg-emerald-950/20" },
                 ].map((s) => (
-          <div key= { s.label } className = {`rounded-xl ${s.bg} p-3.5 text-center`} >
+            <div key= { s.label } className = {`rounded-xl ${s.bg} p-3.5 text-center`} >
         <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wide" > { s.label } </p>
           < p className = {`text-xl font-extrabold mt-1 ${s.color}`
 }> { s.value } </p>
