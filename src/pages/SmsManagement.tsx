@@ -535,9 +535,19 @@ export default function SmsManagement() {
       const result = await smsManagementApi.createWallet(fundTarget.id, {
         ...(charge ? { charge_per_sms: charge } : {}),
       });
+      
+      // Immediately activate the wallet (backend auto-suspends zero-balance wallets)
+      try {
+        await smsManagementApi.updateStatus(fundTarget.id, { status: "active" });
+      } catch (statusErr) {
+        // If status update fails, log but don't block - wallet is created
+        console.warn("Could not auto-activate wallet:", statusErr);
+      }
+      
       setCreateWalletResult(result);
       setFundNoWallet(false);
       loadInstitutions(instPage, instSearch, instStatus, instSort, instOrder);
+      showToast.success(`SMS wallet created for ${fundTarget.name}. Now you can fund it.`);
     } catch (e: unknown) {
       showToast.error((e as Error).message || "Failed to create wallet");
     } finally {
@@ -590,7 +600,16 @@ export default function SmsManagement() {
         await smsManagementApi.createWallet(editRateTarget.id, {
           charge_per_sms: parseFloat(editRateValue),
         });
-        showToast.success(`SMS wallet created for ${editRateTarget.name} with rate ₦${editRateValue}/SMS`);
+        
+        // Immediately activate the wallet (backend auto-suspends zero-balance wallets)
+        try {
+          await smsManagementApi.updateStatus(editRateTarget.id, { status: "active" });
+        } catch (statusErr) {
+          // If status update fails, log but don't block - wallet is created
+          console.warn("Could not auto-activate wallet:", statusErr);
+        }
+        
+        showToast.success(`SMS wallet created for ${editRateTarget.name} with rate ₦${editRateValue}/SMS. You can now fund it.`);
         setEditRateResult({
           institution_id: editRateTarget.id,
           institution_name: editRateTarget.name,
