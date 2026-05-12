@@ -365,7 +365,30 @@ class ApiService {
                 };
             }
 
-            const data = await response.json().catch(() => ({}));
+            // Try to parse JSON response, fallback to text if it fails
+            let data: any;
+            const contentType = response.headers.get("content-type");
+            
+            try {
+                if (contentType && contentType.includes("application/json")) {
+                    data = await response.json();
+                } else {
+                    // Server returned non-JSON (likely HTML error page)
+                    const text = await response.text();
+                    data = { 
+                        success: false, 
+                        message: response.ok 
+                            ? "Unexpected response format" 
+                            : `Server error (${response.status})`,
+                        raw_response: text.substring(0, 500) // Include first 500 chars for debugging
+                    };
+                }
+            } catch (parseError) {
+                data = { 
+                    success: false, 
+                    message: `Failed to parse server response (${response.status})` 
+                };
+            }
 
             if (!response.ok) {
                 // Handle 401 Unauthorized - session expired
@@ -375,8 +398,21 @@ class ApiService {
                         this.onUnauthorized();
                     }
                 }
+                
+                // Log the full error for debugging
+                console.error("API Error:", {
+                    endpoint,
+                    status: response.status,
+                    data,
+                    requestBody: options.body
+                });
+                
                 // Always embed the HTTP status so callers can branch on it (e.g. 404 = not found)
-                throw { ...data, status: response.status };
+                throw { 
+                    ...data, 
+                    status: response.status,
+                    message: data.message || `HTTP ${response.status} error`
+                };
             }
 
             return data;
