@@ -758,6 +758,228 @@ class ApiService {
             }
         );
     }
+
+    // ── Tenant Dashboard ──────────────────────────────────────────────────────
+
+    async getTenantDashboardStats(tenantId: number): Promise<{ success: boolean; data: TenantDashboardStats }> {
+        return this.request(`/admin/tenants/${tenantId}/dashboard/stats`);
+    }
+
+    async getTenantDashboardCustomers(
+        tenantId: number,
+        params: { page?: number; per_page?: number; search?: string; status?: string }
+    ): Promise<{ success: boolean; data: TenantDashboardCustomersResponse }> {
+        const qs = new URLSearchParams();
+        if (params.page) qs.set("page", String(params.page));
+        if (params.per_page) qs.set("per_page", String(params.per_page));
+        if (params.search) qs.set("search", params.search);
+        if (params.status) qs.set("status", params.status);
+        const q = qs.toString();
+        return this.request(`/admin/tenants/${tenantId}/dashboard/customers${q ? `?${q}` : ""}`);
+    }
+
+    async getTenantDashboardSavings(tenantId: number): Promise<{ success: boolean; data: TenantDashboardSavings }> {
+        return this.request(`/admin/tenants/${tenantId}/dashboard/savings`);
+    }
+
+    async getTenantDashboardLoans(tenantId: number): Promise<{ success: boolean; data: TenantDashboardLoans }> {
+        return this.request(`/admin/tenants/${tenantId}/dashboard/loans`);
+    }
+
+    async getTenantDashboardAssets(tenantId: number): Promise<{ success: boolean; data: TenantDashboardAssets }> {
+        return this.request(`/admin/tenants/${tenantId}/dashboard/assets`);
+    }
+
+    async getTenantDashboardCooperatives(tenantId: number): Promise<{ success: boolean; data: TenantDashboardCooperatives }> {
+        return this.request(`/admin/tenants/${tenantId}/dashboard/cooperatives`);
+    }
+
+    async getTenantDashboardInvestments(tenantId: number): Promise<{ success: boolean; data: TenantDashboardInvestments }> {
+        return this.request(`/admin/tenants/${tenantId}/dashboard/investments`);
+    }
+
+    async getTenantDashboardServices(tenantId: number): Promise<{ success: boolean; data: TenantDashboardServices }> {
+        return this.request(`/admin/tenants/${tenantId}/dashboard/services`);
+    }
+
+    async getTenantDashboardActivity(
+        tenantId: number,
+        params: { limit?: number; module?: string }
+    ): Promise<{ success: boolean; data: TenantDashboardActivityItem[] }> {
+        const qs = new URLSearchParams();
+        if (params.limit) qs.set("limit", String(params.limit));
+        if (params.module) qs.set("module", params.module);
+        const q = qs.toString();
+        return this.request(`/admin/tenants/${tenantId}/dashboard/activity${q ? `?${q}` : ""}`);
+    }
+
+    async getTenantDashboardFlags(
+        tenantId: number,
+        params: { resolved?: boolean }
+    ): Promise<{ success: boolean; data: TenantDashboardFlag[] }> {
+        const q = params.resolved ? "?resolved=true" : "";
+        return this.request(`/admin/tenants/${tenantId}/dashboard/flags${q}`);
+    }
+
+    async resolveTenantDashboardFlag(
+        tenantId: number,
+        flagId: number
+    ): Promise<{ success: boolean; message: string; data: { id: number; resolved: boolean } }> {
+        return this.request(`/admin/tenants/${tenantId}/dashboard/flags/${flagId}/resolve`, {
+            method: "PATCH",
+        });
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Tenant Dashboard Interfaces
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface TenantDashboardStats {
+    total_customers: number;
+    new_customers_this_month: number;
+    new_customers_last_month: number;
+    active_customers: number;
+    suspended_customers: number;
+    total_transactions: number;
+    transaction_volume: number;
+    transaction_volume_this_month: number;
+    total_revenue: number;
+    revenue_this_month: number;
+    total_savings_balance: number;
+    total_deposits: number;
+    total_withdrawals: number;
+    total_branches: number;
+    total_staff: number;
+    last_activity_at: string | null;
+}
+
+interface TenantDashboardCustomer {
+    id: number;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    account_number: string | null;
+    status: "active" | "inactive" | "suspended";
+    savings_balance: number;
+    loan_balance: number;
+    investment_balance: number;
+    cooperative_balance: number;
+    total_balance: number;
+    transactions_this_month: number;
+    risk_flags: number;
+    joined_at: string | null;
+    last_active_at: string | null;
+}
+
+interface TenantDashboardCustomersMeta {
+    total: number;
+    per_page: number;
+    current_page: number;
+    last_page: number;
+}
+
+interface TenantDashboardCustomersResponse {
+    data: TenantDashboardCustomer[];
+    meta: TenantDashboardCustomersMeta;
+}
+
+interface TenantDashboardActivityItem {
+    id: number;
+    module: "savings" | "loans" | "assets" | "services" | "cooperatives" | "investments";
+    type: string;
+    customer_name: string;
+    amount: number;
+    status: "completed" | "pending" | "failed" | "approved" | "rejected" | "disbursed";
+    created_at: string;
+}
+
+interface TenantDashboardFlag {
+    id: number;
+    severity: "low" | "medium" | "high";
+    type: string;
+    customer_name: string;
+    description: string;
+    amount: number | null;
+    created_at: string;
+    resolved: boolean;
+}
+
+interface TenantDashboardSavings {
+    total_accounts: number;
+    active_accounts: number;
+    total_balance: number;
+    deposits_this_month: number;
+    withdrawals_this_month: number;
+    new_accounts_this_month: number;
+    top_products: Array<{ name: string; count: number; balance: number }>;
+    recent_transactions: TenantDashboardActivityItem[];
+    weekly_deposits: number[];
+    weekly_withdrawals: number[];
+}
+
+interface TenantDashboardLoans {
+    total_applications: number;
+    approved_loans: number;
+    active_loans: number;
+    disbursed_amount: number;
+    outstanding_balance: number;
+    overdue_loans: number;
+    overdue_amount: number;
+    repayments_this_month: number;
+    npl_ratio: number;
+    loan_to_deposit_ratio: number;
+    recent_applications: Array<{
+        id: number;
+        applicant_name: string;
+        amount: number;
+        status: "pending" | "approved" | "disbursed" | "rejected";
+        product: string;
+        created_at: string;
+    }>;
+    overdue_list: Array<{ name: string; product: string; amount: number; days_overdue: number }>;
+}
+
+interface TenantDashboardAssets {
+    total_assets: number;
+    active_leases: number;
+    total_financed: number;
+    outstanding_balance: number;
+    overdue_count: number;
+    overdue_amount: number;
+    asset_types: Array<{ type: string; count: number; value: number }>;
+    recent: Array<{ id: number; customer_name: string; asset_type: string; amount: number; status: string; created_at: string }>;
+}
+
+interface TenantDashboardCooperatives {
+    total_groups: number;
+    total_members: number;
+    total_contributions: number;
+    total_payouts: number;
+    active_cycles: number;
+    completed_cycles: number;
+    groups: Array<{ id: number; name: string; members: number; contributions: number; payout: number; cycle_end: string; status: "active" | "completed" | "paused" }>;
+}
+
+interface TenantDashboardInvestments {
+    total_portfolios: number;
+    total_invested: number;
+    total_returns: number;
+    roi_percentage: number;
+    active_plans: number;
+    matured_plans: number;
+    plans: Array<{ id: number; customer_name: string; plan_name: string; amount: number; returns: number; roi: number; maturity_date: string; status: "active" | "matured" | "withdrawn" }>;
+    plan_breakdown: Array<{ name: string; amount: number; count: number }>;
+}
+
+interface TenantDashboardServices {
+    total_transactions: number;
+    total_volume: number;
+    airtime_volume: number;
+    data_volume: number;
+    bills_volume: number;
+    transfers_volume: number;
+    daily_counts: number[];
 }
 
 // Module Interfaces (Updated to match backend API)
@@ -1335,4 +1557,16 @@ export type {
     HealthCheckResponse,
     DetailedHealthCheck,
     RateLimitInfo,
+    TenantDashboardStats,
+    TenantDashboardCustomer,
+    TenantDashboardCustomersMeta,
+    TenantDashboardCustomersResponse,
+    TenantDashboardActivityItem,
+    TenantDashboardFlag,
+    TenantDashboardSavings,
+    TenantDashboardLoans,
+    TenantDashboardAssets,
+    TenantDashboardCooperatives,
+    TenantDashboardInvestments,
+    TenantDashboardServices,
 };

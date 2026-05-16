@@ -521,7 +521,7 @@ export default function SmsManagement() {
       }
 
       const units_credited = Math.floor(amount / charge_per_sms);
-      
+
       // Build payload - only include note if it has a value
       const payload: { amount: number; charge_per_sms: number; note?: string } = {
         amount,
@@ -530,7 +530,7 @@ export default function SmsManagement() {
       if (fundNote && fundNote.trim()) {
         payload.note = fundNote.trim();
       }
-      
+
       const res = await smsManagementApi.fundInstitution(fundTarget.id, payload);
       // Build receipt from response data if present, otherwise derive from what we sent
       setFundResult({

@@ -1629,7 +1629,8 @@ className = "flex items-center gap-1 rounded-md border border-primary/30 bg-back
 
 {/* Tenant Details Dialog */ }
 <Dialog open={ isDetailsDialogOpen } onOpenChange = { setIsDetailsDialogOpen } >
-  <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 gap-0" >
+  <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 gap-0" aria-describedby={undefined}>
+    <DialogTitle className="sr-only">{selectedTenant ? `${selectedTenant.name} — Tenant Details` : "Tenant Details"}</DialogTitle>
     { selectedTenant && (
       <>
       {/* Hero Header */ }
