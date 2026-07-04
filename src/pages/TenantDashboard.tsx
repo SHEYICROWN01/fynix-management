@@ -142,6 +142,16 @@ function SectionSkeleton() {
   );
 }
 
+function UnavailableSection({ cols = 4 }: { cols?: number }) {
+  return (
+    <div className={`col-span-${cols} rounded-2xl border border-dashed bg-muted/20 p-8 flex flex-col items-center gap-2 text-center`}>
+      <AlertTriangle className="h-6 w-6 text-muted-foreground/50" />
+      <p className="text-sm font-medium text-muted-foreground">Data unavailable</p>
+      <p className="text-xs text-muted-foreground/70">This section hasn't been set up on the backend yet, or the API returned an error.</p>
+    </div>
+  );
+}
+
 const MODULE_ICONS: Record<string, React.ElementType> = {
   savings: PiggyBank, loans: Landmark, assets: Briefcase,
   services: Zap, cooperatives: Users, investments: TrendingUp,
@@ -163,6 +173,7 @@ export default function TenantDashboard() {
   const [modules, setModules] = useState<TenantModule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   // Dashboard sections
   const [stats, setStats] = useState<TenantDashboardStats | null>(null);
@@ -239,6 +250,7 @@ export default function TenantDashboard() {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      setLoaded(true);
     }
   }, [tid]);
 
@@ -455,21 +467,23 @@ export default function TenantDashboard() {
 
         {/* Top KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {stats ? (
+          {!loaded ? (
+            [1, 2, 3, 4].map(i => <SectionSkeleton key={i} />)
+          ) : stats ? (
             <>
               <StatCard title="Total Customers" value={fmtNum(stats.total_customers)} icon={Users} color="bg-blue-500"
                 trend={customerGrowth} trendLabel={`${stats.new_customers_this_month} new this month`} />
               <StatCard title="Assets Under Mgmt" value={fmt(totalAUM)} sub="Savings + Investments + Coops"
                 icon={Wallet} color="bg-violet-500" />
               <StatCard title="Txn Volume (Month)" value={fmt(stats.transaction_volume_this_month)}
-                icon={Activity} color="bg-emerald-500" trend={12}
+                icon={Activity} color="bg-emerald-500"
                 trendLabel={`${fmtNum(stats.total_transactions)} total`} />
               <StatCard title="Open Risk Flags" value={String(openFlags.length)}
                 sub={`${highFlags} high severity`} icon={AlertTriangle}
                 color={highFlags > 0 ? "bg-red-500" : "bg-orange-500"} />
             </>
           ) : (
-            [1, 2, 3, 4].map(i => <SectionSkeleton key={i} />)
+            <div className="col-span-4"><UnavailableSection cols={4} /></div>
           )}
         </div>
 
@@ -499,7 +513,7 @@ export default function TenantDashboard() {
           {/* ── OVERVIEW ─────────────────────────────────────────────────────── */}
           <TabsContent value="overview" className="mt-5 space-y-5">
             <div className="grid md:grid-cols-2 gap-5">
-              {stats ? (
+              {!loaded ? <SectionSkeleton /> : stats ? (
                 <SectionCard title="Financial Snapshot" icon={DollarSign}>
                   <div className="space-y-0">
                     {([
@@ -520,9 +534,9 @@ export default function TenantDashboard() {
                     ))}
                   </div>
                 </SectionCard>
-              ) : <SectionSkeleton />}
+              ) : loaded ? <UnavailableSection /> : <SectionSkeleton />}
 
-              {stats ? (
+              {!loaded ? <SectionSkeleton /> : stats ? (
                 <SectionCard title="Customer Activity" icon={UserCheck}>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
@@ -564,7 +578,7 @@ export default function TenantDashboard() {
                     </div>
                   </div>
                 </SectionCard>
-              ) : <SectionSkeleton />}
+              ) : <UnavailableSection />}
             </div>
 
             {/* AUM by Module */}
@@ -867,6 +881,8 @@ export default function TenantDashboard() {
                     </SectionCard>
                   )}
                 </>
+              ) : loaded ? (
+                <UnavailableSection />
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[1, 2, 3, 4].map(i => <SectionSkeleton key={i} />)}</div>
               )}
@@ -990,6 +1006,8 @@ export default function TenantDashboard() {
                     </SectionCard>
                   </div>
                 </>
+              ) : loaded ? (
+                <UnavailableSection />
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[1, 2, 3, 4].map(i => <SectionSkeleton key={i} />)}</div>
               )}
@@ -1055,6 +1073,8 @@ export default function TenantDashboard() {
                     </SectionCard>
                   </div>
                 </>
+              ) : loaded ? (
+                <UnavailableSection />
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[1, 2, 3, 4].map(i => <SectionSkeleton key={i} />)}</div>
               )}
@@ -1103,6 +1123,8 @@ export default function TenantDashboard() {
                     )}
                   </SectionCard>
                 </>
+              ) : loaded ? (
+                <UnavailableSection />
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">{[1, 2, 3, 4, 5].map(i => <SectionSkeleton key={i} />)}</div>
               )}
@@ -1165,6 +1187,8 @@ export default function TenantDashboard() {
                     </SectionCard>
                   </div>
                 </>
+              ) : loaded ? (
+                <UnavailableSection />
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">{[1, 2, 3, 4, 5].map(i => <SectionSkeleton key={i} />)}</div>
               )}
@@ -1239,6 +1263,8 @@ export default function TenantDashboard() {
                     </SectionCard>
                   </div>
                 </>
+              ) : loaded ? (
+                <UnavailableSection />
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[1, 2, 3, 4].map(i => <SectionSkeleton key={i} />)}</div>
               )}

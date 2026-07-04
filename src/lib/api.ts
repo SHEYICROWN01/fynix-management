@@ -1536,7 +1536,712 @@ export const api = new ApiService();
 export const smsProviderApi = new SmsProviderApiService();
 export const smsManagementApi = new SmsManagementApiService();
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Email Interfaces
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export interface EmailItem {
+    id: number;
+    message_id: string;
+    thread_id: string | null;
+    direction: "inbound" | "outbound";
+    from_email: string;
+    from_name: string | null;
+    to: string[] | string;
+    cc: string[] | string;
+    bcc: string[] | string;
+    subject: string;
+    body_html: string | null;
+    body_text: string | null;
+    is_read: boolean;
+    sent_at: string;
+    created_at: string;
+}
+
+export interface EmailListResponse {
+    data: EmailItem[];
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+}
+
+export interface EmailDetailResponse {
+    email: EmailItem;
+    thread: EmailItem[];
+}
+
+export interface ComposeEmailData {
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject: string;
+    body_html: string;
+    body_text: string;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Email API Service
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class EmailApiService extends ApiService {
+    // Normalise any Laravel response shape into a consistent EmailListResponse
+    private normaliseList(res: any): EmailListResponse {
+        // Unwrap top-level { success, data } envelope if present
+        const payload = (res && typeof res === "object" && "data" in res) ? res.data : res;
+
+        // Shape A — Laravel paginator: { data: [...], total, current_page, … }
+        if (payload && Array.isArray(payload.data)) {
+            return {
+                data: payload.data,
+                current_page: payload.current_page ?? 1,
+                last_page:    payload.last_page    ?? 1,
+                per_page:     payload.per_page     ?? 20,
+                total:        payload.total        ?? payload.data.length,
+            };
+        }
+        // Shape B — flat array
+        if (Array.isArray(payload)) {
+            return { data: payload, current_page: 1, last_page: 1, per_page: payload.length, total: payload.length };
+        }
+        // Shape C — { emails: [...], total }
+        if (payload && Array.isArray(payload.emails)) {
+            return { data: payload.emails, current_page: 1, last_page: 1, per_page: payload.emails.length, total: payload.total ?? payload.emails.length };
+        }
+        // Shape D — { items: [...] }
+        if (payload && Array.isArray(payload.items)) {
+            return { data: payload.items, current_page: 1, last_page: 1, per_page: payload.items.length, total: payload.total ?? payload.items.length };
+        }
+
+        console.warn("[EmailApiService] Unrecognised list response shape:", res);
+        return { data: [], current_page: 1, last_page: 1, per_page: 20, total: 0 };
+    }
+
+    async getInbox(params: { per_page?: number; search?: string; unread?: boolean } = {}): Promise<EmailListResponse> {
+        const qs = new URLSearchParams();
+        if (params.per_page) qs.set("per_page", String(params.per_page));
+        if (params.search)   qs.set("search",   params.search);
+        if (params.unread)   qs.set("unread",   "true");
+        const res = await this.request<any>(`/v1/system/emails/inbox?${qs}`);
+        return this.normaliseList(res);
+    }
+
+    async getSent(params: { per_page?: number; search?: string } = {}): Promise<EmailListResponse> {
+        const qs = new URLSearchParams();
+        if (params.per_page) qs.set("per_page", String(params.per_page));
+        if (params.search)   qs.set("search",   params.search);
+        const res = await this.request<any>(`/v1/system/emails/sent?${qs}`);
+        return this.normaliseList(res);
+    }
+
+    async getUnreadCount(): Promise<number> {
+        const res = await this.request<any>("/v1/system/emails/unread-count");
+        // Handle: { data: { unread_count } } or { unread_count } or plain number
+        return (
+            res?.data?.unread_count ??
+            res?.unread_count       ??
+            (typeof res?.data === "number" ? res.data : 0)
+        );
+    }
+
+    async getEmail(id: number): Promise<EmailDetailResponse> {
+        const res = await this.request<any>(`/v1/system/emails/${id}`);
+        // Unwrap envelope
+        const payload = (res && "data" in res) ? res.data : res;
+
+        // Shape A — { email: {...}, thread: [...] }
+        if (payload?.email) {
+            return {
+                email:  payload.email,
+                thread: Array.isArray(payload.thread) ? payload.thread : [],
+            };
+        }
+        // Shape B — email fields are at root level, thread as sibling
+        if (payload?.id) {
+            const { thread, ...email } = payload;
+            return { email, thread: Array.isArray(thread) ? thread : [] };
+        }
+
+        console.warn("[EmailApiService] Unrecognised detail response shape:", res);
+        throw new Error("Unexpected email detail response format");
+    }
+
+    async compose(data: ComposeEmailData): Promise<EmailItem> {
+        const res = await this.request<any>(
+            "/v1/system/emails/compose",
+            { method: "POST", body: JSON.stringify(data) }
+        );
+        return res?.data ?? res;
+    }
+
+    async reply(id: number, data: { body_html: string; body_text: string }): Promise<EmailItem> {
+        const res = await this.request<any>(
+            `/v1/system/emails/${id}/reply`,
+            { method: "POST", body: JSON.stringify(data) }
+        );
+        return res?.data ?? res;
+    }
+
+    async markAsRead(id: number): Promise<void> {
+        await this.request(`/v1/system/emails/${id}/read`, { method: "PATCH" });
+    }
+
+    async deleteEmail(id: number): Promise<void> {
+        await this.request(`/v1/system/emails/${id}`, { method: "DELETE" });
+    }
+}
+
+export const emailApi = new EmailApiService();
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Billing API
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export interface BillingInvoice {
+    id: string;                  // e.g. "INV-2026-07-0012"
+    tenant_id: number;
+    tenant_name: string;
+    tenant_email: string;
+    tenant_slug: string;
+    period: string;              // e.g. "July 2026"
+    issued_date: string;         // ISO date "2026-07-01"
+    due_date: string;            // ISO date "2026-07-06"
+    amount: number;              // e.g. 35000
+    status: "pending" | "sent" | "paid" | "overdue";
+    paid_date: string | null;
+    billing_mode: "flat_rate" | "per_module" | "per_usage";
+}
+
+export interface BillingConfig {
+    billing_mode: "flat_rate" | "per_module" | "per_usage";
+    flat_rate_ngn: number;
+    due_days: number;
+    currency: string;
+    // Optional — returned once backend persists bank details in config table
+    bank_name?: string;
+    bank_account?: string;
+    bank_account_name?: string;
+}
+
+export interface BillingConfigPatch {
+    flat_rate_ngn?: number;
+    due_days?: number;
+    bank_name?: string;
+    bank_account?: string;
+    bank_account_name?: string;
+}
+
+interface BillingInvoicesResponse {
+    success: boolean;
+    data: BillingInvoice[];
+}
+
+interface BillingConfigResponse {
+    success: boolean;
+    data: BillingConfig;
+}
+
+interface BillingActionResponse {
+    success: boolean;
+    message: string;
+    data?: { paid_date?: string };
+}
+
+class BillingApiService extends ApiService {
+    async listInvoices(year: number, month: number): Promise<BillingInvoice[]> {
+        const m = month.toString().padStart(2, "0");
+        const res = await this.request<BillingInvoicesResponse>(
+            `/admin/billing/invoices?year=${year}&month=${m}`
+        );
+        return Array.isArray(res?.data) ? res.data : [];
+    }
+
+    async getConfig(): Promise<BillingConfig> {
+        const res = await this.request<BillingConfigResponse>("/admin/billing/config");
+        return res.data ?? { billing_mode: "flat_rate", flat_rate_ngn: 35000, due_days: 5, currency: "NGN" };
+    }
+
+    async sendInvoice(id: string): Promise<BillingActionResponse> {
+        return this.request<BillingActionResponse>(
+            `/admin/billing/invoices/${id}/send`,
+            { method: "POST" }
+        );
+    }
+
+    async sendAllInvoices(year: number, month: number): Promise<BillingActionResponse> {
+        const m = month.toString().padStart(2, "0");
+        return this.request<BillingActionResponse>(
+            `/admin/billing/invoices/send-all?year=${year}&month=${m}`,
+            { method: "POST" }
+        );
+    }
+
+    async markPaid(id: string): Promise<{ paid_date: string }> {
+        const res = await this.request<BillingActionResponse>(
+            `/admin/billing/invoices/${id}/mark-paid`,
+            { method: "POST" }
+        );
+        return { paid_date: res.data?.paid_date ?? new Date().toISOString().split("T")[0] };
+    }
+
+    async updateConfig(patch: BillingConfigPatch): Promise<BillingConfig> {
+        const res = await this.request<BillingConfigResponse>(
+            "/admin/billing/config",
+            { method: "PATCH", body: JSON.stringify(patch) }
+        );
+        return res.data;
+    }
+
+    async updateInvoiceAmount(id: string, amount: number): Promise<BillingInvoice> {
+        const res = await this.request<{ success: boolean; data: BillingInvoice }>(
+            `/admin/billing/invoices/${id}/amount`,
+            { method: "PATCH", body: JSON.stringify({ amount }) }
+        );
+        return res.data;
+    }
+}
+
+export const billingApi = new BillingApiService();
+
+// ─── Analytics Types ──────────────────────────────────────────────────────────
+
+export type AnalyticsPeriod = "7d" | "30d" | "90d" | "12m";
+
+export interface AnalyticsSummary {
+    total_tenants: { value: number; change_value: number; change_percent: number; direction: "up" | "down"; label: string };
+    active_users: { value: number; change_value: number; change_percent: number; direction: "up" | "down"; label: string };
+    growth_rate: { value: number; unit: string; direction: "up" | "down"; label: string };
+    avg_session_minutes: { value: number; change_value: number; direction: "up" | "down"; label: string };
+}
+
+export interface TenantGrowthPoint {
+    label: string;
+    date: string;
+    total: number;
+    new: number;
+    churned: number;
+}
+
+export interface TenantGrowthResponse {
+    period: string;
+    granularity: string;
+    series: TenantGrowthPoint[];
+}
+
+export interface UserActivityPoint {
+    hour: string;
+    avg_users: number;
+}
+
+export interface PlanDistributionItem {
+    plan_name: string;
+    plan_id: number;
+    tenant_count: number;
+    percent: number;
+}
+
+export interface TopTenantItem {
+    tenant_id: number;
+    tenant_name: string;
+    tenant_slug: string;
+    active_users: number;
+    active_users_change_percent: number;
+    direction: "up" | "down";
+    total_transactions: number;
+    plan_name: string;
+}
+
+export interface SystemPerformanceMetric {
+    value: number;
+    unit?: string;
+    display?: string;
+    status: "good" | "warning" | "critical";
+    threshold_warning?: number;
+    threshold_critical?: number;
+}
+
+export interface SystemPerformance {
+    api_response_time_ms: SystemPerformanceMetric;
+    database_queries_per_day: SystemPerformanceMetric & { display: string };
+    error_rate_percent: SystemPerformanceMetric & { display: string };
+    uptime_30d_percent: SystemPerformanceMetric & { display: string };
+    active_tenant_databases: SystemPerformanceMetric;
+    queued_jobs: SystemPerformanceMetric;
+    overall_status: "operational" | "degraded" | "outage";
+}
+
+class AnalyticsApiService extends ApiService {
+    async getSummary(period: AnalyticsPeriod = "30d"): Promise<AnalyticsSummary> {
+        const res = await this.request<{ success: boolean; data: AnalyticsSummary }>(
+            `/admin/analytics/summary?period=${period}`
+        );
+        return res.data;
+    }
+
+    async getTenantGrowth(period: AnalyticsPeriod = "12m"): Promise<TenantGrowthResponse> {
+        const res = await this.request<{ success: boolean; data: TenantGrowthResponse }>(
+            `/admin/analytics/tenant-growth?period=${period}`
+        );
+        return res.data;
+    }
+
+    async getUserActivity(period: AnalyticsPeriod = "30d"): Promise<UserActivityPoint[]> {
+        const res = await this.request<{ success: boolean; data: { hourly_average: UserActivityPoint[] } }>(
+            `/admin/analytics/user-activity?period=${period}`
+        );
+        return res.data.hourly_average;
+    }
+
+    async getPlanDistribution(): Promise<PlanDistributionItem[]> {
+        const res = await this.request<{ success: boolean; data: PlanDistributionItem[] }>(
+            "/admin/analytics/plan-distribution"
+        );
+        return res.data;
+    }
+
+    async getTopTenants(period: AnalyticsPeriod = "30d", limit = 10): Promise<TopTenantItem[]> {
+        const res = await this.request<{ success: boolean; data: TopTenantItem[] }>(
+            `/admin/analytics/top-tenants?period=${period}&limit=${limit}`
+        );
+        return res.data;
+    }
+
+    async getSystemPerformance(): Promise<SystemPerformance> {
+        const res = await this.request<{ success: boolean; data: SystemPerformance }>(
+            "/admin/analytics/system-performance"
+        );
+        return res.data;
+    }
+}
+
+export const analyticsApi = new AnalyticsApiService();
+
+// ─── Finance Types ────────────────────────────────────────────────────────────
+
+export interface FinRevenueSummaryPeriod {
+    revenue: number; expenses: number; net_profit: number; owner_draw: number;
+}
+export interface FinRevenueSummary {
+    today: FinRevenueSummaryPeriod;
+    week: FinRevenueSummaryPeriod;
+    month: FinRevenueSummaryPeriod;
+    year: FinRevenueSummaryPeriod;
+    mrr: number; arr: number;
+    gross_margin_percent: number; net_margin_percent: number;
+    burn_rate: number; runway_months: number;
+    outstanding_invoices: { count: number; amount: number };
+    overdue_invoices: { count: number; amount: number };
+    financial_health_score: number;
+    investor_readiness_score: number;
+}
+export interface FinRevenueTrendPoint {
+    month: string; year: number; label: string;
+    revenue: number; expenses: number; gross_profit: number; net_profit: number;
+}
+export interface FinRevenueBySource {
+    source_id: number; source_name: string; amount: number; percent: number; trend_percent: number;
+}
+export interface FinRevenueSource {
+    id: number; name: string; description: string; category: string;
+    gl_account_code: string; gl_account_name: string;
+    integration_modules: string[]; auto_post: boolean;
+    taxable: boolean; tax_rate: number;
+    status: "active" | "inactive" | "coming_soon";
+    mtd_revenue: number; created_at: string; created_by: string;
+}
+export interface FinRevenueEntry {
+    id: string; source_id: number; source_name: string;
+    institution_id: number; institution_name: string;
+    invoice_id: string; amount: number; payment_method: string;
+    payment_date: string; reference: string; gl_account: string;
+    posted_by: string; post_type: "auto" | "manual"; module_origin: string;
+    status: string; created_at: string;
+}
+export interface FinExpense {
+    id: string; description: string; category: string; vendor: string; amount: number;
+    payment_method: string; company_account_id: number; expense_date: string;
+    reference: string; gl_account: string; receipt_url: string | null;
+    status: "approved" | "pending" | "rejected";
+    created_by: string; approved_by: string | null; approved_at: string | null;
+    notes: string; is_recurring: boolean; recurrence_period: string | null;
+}
+export interface FinExpenseSummary {
+    mtd_total: number; ytd_total: number; avg_daily: number;
+    largest_category: { name: string; amount: number };
+    by_category: { category: string; amount: number; percent: number }[];
+    pending_approval: number; budget_utilization_percent: number;
+}
+export interface FinOwnerDraw {
+    id: string; owner_name: string; amount: number; purpose: string; category: string;
+    company_account_id: number; account_name: string; withdrawal_date: string;
+    reference: string; approved_by: string; status: "approved" | "pending"; notes: string;
+}
+export interface FinOwnerDrawSummary {
+    mtd: number; ytd: number; avg_monthly: number; total_records: number;
+}
+export interface FinCompanyAccount {
+    id: number; name: string; bank: string; account_number: string; type: string;
+    currency: "NGN" | "USD"; available_balance: number; ledger_balance: number;
+    pending_debits: number; status: "active" | "frozen"; last_updated: string; txn_count: number;
+}
+export interface FinAccountTransaction {
+    date: string; description: string; type: "credit" | "debit";
+    amount: number; reference: string; balance: number;
+}
+export interface FinAccountPosition { ngn: number; usd: number; accounts_count: number; }
+export interface FinJournalEntryLine { account_code: string; account_name: string; debit: number; credit: number; }
+export interface FinJournalEntry {
+    entry_id: string; date: string; description: string; reference: string;
+    origin_module: string; lines: FinJournalEntryLine[];
+    posted_by: string; created_at: string;
+}
+export interface FinChartOfAccount {
+    code: string; name: string; type: string; parent_code: string | null;
+    balance: number; is_system: boolean;
+}
+export interface FinTrialBalance {
+    accounts: { code: string; name: string; debit: number; credit: number }[];
+    totals: { debit: number; credit: number }; balanced: boolean;
+}
+export interface FinKPIs {
+    mrr: number; arr: number; mrr_growth_percent: number; arr_growth_percent: number;
+    gross_margin_percent: number; net_margin_percent: number; operating_margin_percent: number;
+    cac: number; ltv: number; ltv_cac_ratio: number; churn_rate_percent: number;
+    avg_revenue_per_institution: number; burn_rate: number; runway_months: number;
+    financial_health_score: number; investor_readiness_score: number;
+}
+export interface FinAuditEntry {
+    id: string; timestamp: string; user_id: number; user_name: string;
+    module: string; action: string; record_id: string; description: string;
+    before_value: unknown; after_value: unknown;
+    ip_address: string; user_agent: string; reason: string | null;
+}
+export interface FinBudget {
+    category: string; monthly_budget: number; ytd_budget: number; ytd_actual: number;
+    variance: number; utilization_percent: number;
+    status: "on_track" | "warning" | "over_budget";
+}
+export interface FinCashFlowSummary {
+    opening_balance: number; cash_in: number; cash_out: number;
+    net_cash_flow: number; closing_balance: number;
+}
+export interface FinCashFlowTrendPoint {
+    month: string; cash_in: number; cash_out: number; net: number; balance: number;
+}
+export interface FinIncomeStatement {
+    period: string;
+    revenue: { total: number; lines: { source: string; amount: number }[] };
+    cost_of_revenue: { total: number; lines: { item: string; amount: number }[] };
+    gross_profit: number; gross_margin_percent: number;
+    operating_expenses: { total: number; lines: { item: string; amount: number }[] };
+    ebitda: number; other_income: number; other_expense: number;
+    net_profit: number; net_margin_percent: number;
+}
+export interface FinBalanceSheet {
+    assets: {
+        current_assets: { cash: number; receivables: number; total: number };
+        fixed_assets: { equipment: number; total: number };
+        total_assets: number;
+    };
+    liabilities: {
+        current_liabilities: { payables: number; tax_payable: number; total: number };
+        total_liabilities: number;
+    };
+    equity: { owners_equity: number; retained_earnings: number; total_equity: number };
+    check: { balanced: boolean; assets: number; liabilities_and_equity: number };
+}
+
+interface FinPaginatedMeta { total: number; page: number; per_page: number; last_page: number; }
+interface FinPaginated<T> { data: T[]; meta: FinPaginatedMeta; }
+
+class FinanceApiService extends ApiService {
+    // ── Revenue Summary ───────────────────────────────────────────────────────
+    async getRevenueSummary(): Promise<FinRevenueSummary> {
+        const res = await this.request<{ success: boolean; data: FinRevenueSummary }>("/admin/finance/revenue/summary");
+        return res.data;
+    }
+    async getRevenueTrend(months = 12): Promise<FinRevenueTrendPoint[]> {
+        const res = await this.request<{ success: boolean; data: FinRevenueTrendPoint[] }>(`/admin/finance/revenue/trend?months=${months}`);
+        return res.data;
+    }
+    async getRevenueBySource(period: "month" | "year" = "month"): Promise<FinRevenueBySource[]> {
+        const res = await this.request<{ success: boolean; data: FinRevenueBySource[] }>(`/admin/finance/revenue/by-source?period=${period}`);
+        return res.data;
+    }
+
+    // ── Revenue Sources (Config) ──────────────────────────────────────────────
+    async listRevenueSources(status?: string): Promise<FinRevenueSource[]> {
+        const q = status ? `?status=${status}` : "";
+        const res = await this.request<{ success: boolean; data: FinRevenueSource[] }>(`/admin/finance/revenue-sources${q}`);
+        return res.data;
+    }
+    async createRevenueSource(data: { name: string; description: string; category: string; gl_account_code: string; auto_post: boolean }): Promise<FinRevenueSource> {
+        const res = await this.request<{ success: boolean; data: FinRevenueSource }>("/admin/finance/revenue-sources", { method: "POST", body: JSON.stringify(data) });
+        return res.data;
+    }
+    async toggleRevenueSource(id: number): Promise<FinRevenueSource> {
+        const res = await this.request<{ success: boolean; data: FinRevenueSource }>(`/admin/finance/revenue-sources/${id}/toggle`, { method: "PATCH" });
+        return res.data;
+    }
+
+    // ── Revenue Entries ───────────────────────────────────────────────────────
+    async listRevenueEntries(params?: { period?: string; source_id?: number; page?: number }): Promise<FinPaginated<FinRevenueEntry>> {
+        const q = new URLSearchParams();
+        if (params?.period) q.set("period", params.period);
+        if (params?.source_id) q.set("source_id", String(params.source_id));
+        if (params?.page) q.set("page", String(params.page));
+        return this.request<FinPaginated<FinRevenueEntry>>(`/admin/finance/revenue?${q}`);
+    }
+    async createRevenueEntry(data: { source_id: number; institution_id?: number; amount: number; payment_method: string; payment_date: string; reference: string; description?: string; company_account_id: number }): Promise<FinRevenueEntry> {
+        const res = await this.request<{ success: boolean; data: FinRevenueEntry }>("/admin/finance/revenue", { method: "POST", body: JSON.stringify(data) });
+        return res.data;
+    }
+
+    // ── Expenses ──────────────────────────────────────────────────────────────
+    async listExpenses(params?: { period?: string; category?: string; status?: string; page?: number }): Promise<FinPaginated<FinExpense>> {
+        const q = new URLSearchParams();
+        if (params?.period) q.set("period", params.period);
+        if (params?.category) q.set("category", params.category);
+        if (params?.status) q.set("status", params.status);
+        if (params?.page) q.set("page", String(params.page));
+        return this.request<FinPaginated<FinExpense>>(`/admin/finance/expenses?${q}`);
+    }
+    async getExpenseSummary(): Promise<FinExpenseSummary> {
+        const res = await this.request<{ success: boolean; data: FinExpenseSummary }>("/admin/finance/expenses/summary");
+        return res.data;
+    }
+    async createExpense(data: { description: string; category: string; vendor: string; amount: number; payment_method: string; company_account_id: number; expense_date: string; reference?: string; notes?: string; is_recurring: boolean; recurrence_period?: string }): Promise<FinExpense> {
+        const res = await this.request<{ success: boolean; data: FinExpense }>("/admin/finance/expenses", { method: "POST", body: JSON.stringify(data) });
+        return res.data;
+    }
+    async approveExpense(id: string, notes?: string): Promise<FinExpense> {
+        const res = await this.request<{ success: boolean; data: FinExpense }>(`/admin/finance/expenses/${id}/approve`, { method: "POST", body: JSON.stringify({ notes }) });
+        return res.data;
+    }
+    async rejectExpense(id: string, reason: string): Promise<FinExpense> {
+        const res = await this.request<{ success: boolean; data: FinExpense }>(`/admin/finance/expenses/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) });
+        return res.data;
+    }
+    async deleteExpense(id: string, reason: string): Promise<void> {
+        await this.request<{ success: boolean }>(`/admin/finance/expenses/${id}`, { method: "DELETE", body: JSON.stringify({ reason }) });
+    }
+
+    // ── Owner's Draw ──────────────────────────────────────────────────────────
+    async listOwnerDraws(year?: number): Promise<FinOwnerDraw[]> {
+        const q = year ? `?year=${year}` : "";
+        const res = await this.request<{ success: boolean; data: FinOwnerDraw[] }>(`/admin/finance/owners-draw${q}`);
+        return res.data;
+    }
+    async getOwnerDrawSummary(): Promise<FinOwnerDrawSummary> {
+        const res = await this.request<{ success: boolean; data: FinOwnerDrawSummary }>("/admin/finance/owners-draw/summary");
+        return res.data;
+    }
+    async createOwnerDraw(data: { owner_name: string; amount: number; purpose: string; category: string; company_account_id: number; withdrawal_date: string; notes?: string }): Promise<FinOwnerDraw> {
+        const res = await this.request<{ success: boolean; data: FinOwnerDraw }>("/admin/finance/owners-draw", { method: "POST", body: JSON.stringify(data) });
+        return res.data;
+    }
+    async reverseOwnerDraw(id: string, reason: string): Promise<void> {
+        await this.request<{ success: boolean }>(`/admin/finance/owners-draw/${id}/reverse`, { method: "POST", body: JSON.stringify({ reason }) });
+    }
+
+    // ── Company Accounts ──────────────────────────────────────────────────────
+    async listCompanyAccounts(): Promise<FinCompanyAccount[]> {
+        const res = await this.request<{ success: boolean; data: FinCompanyAccount[] }>("/admin/finance/accounts");
+        return res.data;
+    }
+    async getAccountPosition(): Promise<FinAccountPosition> {
+        const res = await this.request<{ success: boolean; data: FinAccountPosition }>("/admin/finance/accounts/position");
+        return res.data;
+    }
+    async getAccountTransactions(id: number, params?: { from?: string; to?: string; type?: string; page?: number }): Promise<{ data: FinAccountTransaction[]; meta: { total: number } }> {
+        const q = new URLSearchParams();
+        if (params?.from) q.set("from", params.from);
+        if (params?.to) q.set("to", params.to);
+        if (params?.type) q.set("type", params.type);
+        if (params?.page) q.set("page", String(params.page));
+        return this.request<{ data: FinAccountTransaction[]; meta: { total: number } }>(`/admin/finance/accounts/${id}/transactions?${q}`);
+    }
+    async createTransfer(data: { from_account_id: number; to_account_id: number; amount: number; description: string; reference?: string }): Promise<{ success: boolean }> {
+        return this.request<{ success: boolean }>("/admin/finance/accounts/transfer", { method: "POST", body: JSON.stringify(data) });
+    }
+
+    // ── General Ledger ────────────────────────────────────────────────────────
+    async listJournalEntries(params?: { period?: string; account_code?: string; page?: number }): Promise<{ data: FinJournalEntry[]; meta: { total: number } }> {
+        const q = new URLSearchParams();
+        if (params?.period) q.set("period", params.period);
+        if (params?.account_code) q.set("account_code", params.account_code);
+        if (params?.page) q.set("page", String(params.page));
+        return this.request<{ data: FinJournalEntry[]; meta: { total: number } }>(`/admin/finance/ledger/journal-entries?${q}`);
+    }
+    async getChartOfAccounts(): Promise<FinChartOfAccount[]> {
+        const res = await this.request<{ success: boolean; data: FinChartOfAccount[] }>("/admin/finance/ledger/chart-of-accounts");
+        return res.data;
+    }
+    async getTrialBalance(asOf?: string): Promise<FinTrialBalance> {
+        const q = asOf ? `?as_of=${asOf}` : "";
+        const res = await this.request<{ success: boolean; data: FinTrialBalance }>(`/admin/finance/ledger/trial-balance${q}`);
+        return res.data;
+    }
+
+    // ── KPIs ──────────────────────────────────────────────────────────────────
+    async getKPIs(period: "month" | "quarter" | "year" = "month"): Promise<FinKPIs> {
+        const res = await this.request<{ success: boolean; data: FinKPIs }>(`/admin/finance/kpis?period=${period}`);
+        return res.data;
+    }
+
+    // ── Audit ─────────────────────────────────────────────────────────────────
+    async listAuditEntries(params?: { module?: string; action?: string; from?: string; page?: number }): Promise<{ data: FinAuditEntry[]; meta: { total: number } }> {
+        const q = new URLSearchParams();
+        if (params?.module) q.set("module", params.module);
+        if (params?.action) q.set("action", params.action);
+        if (params?.from) q.set("from", params.from);
+        if (params?.page) q.set("page", String(params.page));
+        return this.request<{ data: FinAuditEntry[]; meta: { total: number } }>(`/admin/finance/audit?${q}`);
+    }
+
+    // ── Budgets ───────────────────────────────────────────────────────────────
+    async listBudgets(year?: number): Promise<FinBudget[]> {
+        const q = year ? `?year=${year}` : "";
+        const res = await this.request<{ success: boolean; data: FinBudget[] }>(`/admin/finance/budgets${q}`);
+        return res.data;
+    }
+    async upsertBudget(data: { category: string; year: number; monthly_budget: number }): Promise<FinBudget> {
+        const res = await this.request<{ success: boolean; data: FinBudget }>("/admin/finance/budgets", { method: "POST", body: JSON.stringify(data) });
+        return res.data;
+    }
+
+    // ── Cash Flow ─────────────────────────────────────────────────────────────
+    async getCashFlowSummary(period: "weekly" | "monthly" | "quarterly" = "monthly"): Promise<FinCashFlowSummary> {
+        const res = await this.request<{ success: boolean; data: FinCashFlowSummary }>(`/admin/finance/cashflow/summary?period=${period}`);
+        return res.data;
+    }
+    async getCashFlowTrend(): Promise<FinCashFlowTrendPoint[]> {
+        const res = await this.request<{ success: boolean; data: FinCashFlowTrendPoint[] }>("/admin/finance/cashflow/trend");
+        return res.data;
+    }
+
+    // ── Reports ───────────────────────────────────────────────────────────────
+    async getIncomeStatement(from: string, to: string): Promise<FinIncomeStatement> {
+        const res = await this.request<{ success: boolean; data: FinIncomeStatement }>(`/admin/finance/reports/income-statement?from=${from}&to=${to}`);
+        return res.data;
+    }
+    async getBalanceSheet(asOf: string): Promise<FinBalanceSheet> {
+        const res = await this.request<{ success: boolean; data: FinBalanceSheet }>(`/admin/finance/reports/balance-sheet?as_of=${asOf}`);
+        return res.data;
+    }
+    async exportReport(data: { report_type: string; format: "pdf" | "excel" | "csv"; from?: string; to?: string }): Promise<{ download_url: string; expires_at: string }> {
+        const res = await this.request<{ success: boolean; data: { download_url: string; expires_at: string } }>("/admin/finance/reports/export", { method: "POST", body: JSON.stringify(data) });
+        return res.data;
+    }
+}
+
+export const financeApi = new FinanceApiService();
+
 export type {
+    EmailItem,
+    EmailListResponse,
+    EmailDetailResponse,
+    ComposeEmailData,
     LoginCredentials,
     LoginResponse,
     UserProfile,
@@ -1569,4 +2274,31 @@ export type {
     TenantDashboardCooperatives,
     TenantDashboardInvestments,
     TenantDashboardServices,
+    BillingInvoice,
+    BillingConfig,
+    BillingConfigPatch,
+    FinRevenueSummary,
+    FinRevenueSummaryPeriod,
+    FinRevenueTrendPoint,
+    FinRevenueBySource,
+    FinRevenueSource,
+    FinRevenueEntry,
+    FinExpense,
+    FinExpenseSummary,
+    FinOwnerDraw,
+    FinOwnerDrawSummary,
+    FinCompanyAccount,
+    FinAccountTransaction,
+    FinAccountPosition,
+    FinJournalEntry,
+    FinJournalEntryLine,
+    FinChartOfAccount,
+    FinTrialBalance,
+    FinKPIs,
+    FinAuditEntry,
+    FinBudget,
+    FinCashFlowSummary,
+    FinCashFlowTrendPoint,
+    FinIncomeStatement,
+    FinBalanceSheet,
 };

@@ -149,6 +149,14 @@ const STATUS_CFG: Record<string, { label: string; bg: string; text: string; dot:
   suspended: { label: "Suspended", bg: "bg-rose-50 dark:bg-rose-950/30", text: "text-rose-700 dark:text-rose-400", dot: "bg-rose-500", border: "border-l-rose-500" },
 };
 
+const SUSPEND_CATEGORIES = [
+  { value: "payment",   label: "Payment Overdue",    icon: CreditCard,   color: "text-amber-700 dark:text-amber-400",  activeBg: "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700",   inactiveBg: "border-border hover:border-amber-300 hover:bg-amber-50/50 dark:hover:bg-amber-950/20" },
+  { value: "violation", label: "Policy Violation",   icon: AlertTriangle, color: "text-orange-700 dark:text-orange-400", activeBg: "bg-orange-50 dark:bg-orange-950/40 border-orange-300 dark:border-orange-700", inactiveBg: "border-border hover:border-orange-300 hover:bg-orange-50/50 dark:hover:bg-orange-950/20" },
+  { value: "security",  label: "Security Concern",   icon: ShieldAlert,  color: "text-red-700 dark:text-red-400",      activeBg: "bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-700",           inactiveBg: "border-border hover:border-red-300 hover:bg-red-50/50 dark:hover:bg-red-950/20" },
+  { value: "review",    label: "Under Review",       icon: Eye,          color: "text-blue-700 dark:text-blue-400",    activeBg: "bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700",         inactiveBg: "border-border hover:border-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-950/20" },
+  { value: "other",     label: "Other",              icon: CircleDot,    color: "text-gray-700 dark:text-gray-400",    activeBg: "bg-gray-100 dark:bg-gray-800/60 border-gray-300 dark:border-gray-600",       inactiveBg: "border-border hover:border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/30" },
+] as const;
+
 // ─── Gradient KPI Card ────────────────────────────────────────────────────────
 
 function KpiCard({
@@ -216,7 +224,7 @@ style = {{ background: `radial-gradient(circle at 100% 50%, currentColor 0%, tra
       < div className = "flex-1 min-w-0" >
         <p className={ `text-[11px] font-semibold uppercase tracking-widest ${textClass} opacity-70` }> { title } </p>
           < p className = {`text-2xl font-extrabold ${textClass} leading-none mt-1 tracking-tight`}> { allTime } </p>
-            < p className = {`text-xs mt-1 ${textClass} opacity-60 font-medium`}> { todayLabel }: <span className="font-bold opacity-90" > { today } < /span></p >
+            <p className={`text-xs mt-1 ${textClass} opacity-60 font-medium`}>{todayLabel}: <span className="font-bold opacity-90">{today}</span></p>
               </div>
               </div>
   );
@@ -311,6 +319,10 @@ export default function SmsManagement() {
   // ── Suspend/Reactivate ──
   const [statusTarget, setStatusTarget] = useState<SmsInstitution | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [suspendCategory, setSuspendCategory] = useState("");
+  const [suspendDetails, setSuspendDetails] = useState("");
+  const [suspendConfirmed, setSuspendConfirmed] = useState(false);
+  const [reactivateNotes, setReactivateNotes] = useState("");
 
   // ── Bulk Fund ──
   const [bulkFundOpen, setBulkFundOpen] = useState(false);
@@ -1345,7 +1357,7 @@ className = "pl-8 h-9 text-sm rounded-xl border-border"
                                                                   {
                                                                     instLoading?(
                                                                       Array.from({ length: PER_PAGE }).map((_, i) => (
-                                                                        <tr key= { i } > <td colSpan={ 9} className = "px-5 py-3" > <Skeleton className="h-10 rounded-lg" /> </td></tr >
+                                                                        <tr key={i}><td colSpan={9} className="px-5 py-3"><Skeleton className="h-10 rounded-lg" /></td></tr>
                   ))
                 ) : institutions.map((inst) => {
                                                                           const sc = STATUS_CFG[inst.status] ?? STATUS_CFG.active;
@@ -1360,7 +1372,7 @@ className = "pl-8 h-9 text-sm rounded-xl border-border"
                                                                       </div>
                                                                       < div className = "min-w-0" >
                                                                         <p className="font-semibold text-foreground text-sm truncate" > { inst.name } </p>
-                                                                          < p className = "text-[10px] text-muted-foreground" >₦{ inst.charge_per_sms } /SMS · {inst.margin_percent?.toFixed(0) ?? 0}% margin</p >
+                                                                          <p className="text-[10px] text-muted-foreground">₦{inst.charge_per_sms} /SMS · {inst.margin_percent?.toFixed(0) ?? 0}% margin</p>
                                                                             </div>
                                                                             </div>
                                                                             </td>
@@ -1507,7 +1519,7 @@ onClick = {() => setStatusTarget(inst)}>
                                     {
                                       todayLoading?(
                                         Array.from({ length: 4 }).map((_, i) => (
-                                          <tr key= { i } > <td colSpan={ 7} className = "px-5 py-2.5" > <Skeleton className="h-8 rounded-lg" /> </td></tr >
+                                          <tr key={i}><td colSpan={7} className="px-5 py-2.5"><Skeleton className="h-8 rounded-lg" /></td></tr>
                   ))
                 ) : todayBreakdown.length === 0 ? (
                                         <tr><td colSpan= { 7} className="px-5 py-10 text-center text-muted-foreground text-sm" > No activity yet today</ td > </tr>
@@ -1621,7 +1633,7 @@ onClick = {() => setStatusTarget(inst)}>
       <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto mb-2" />
         <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wide" > Funding Successful </p>
           < p className = "text-4xl font-black text-emerald-600 tabular-nums" > +{ fmt(fundResult.units_credited) } </p>
-            < p className = "text-sm text-muted-foreground" > SMS units credited to < span className = "font-bold text-foreground" > { fundResult.institution_name } < /span></p >
+            <p className="text-sm text-muted-foreground">SMS units credited to <span className="font-bold text-foreground">{fundResult.institution_name}</span></p>
               </div>
               < div className = "grid grid-cols-2 gap-3 text-sm" >
                 <div className="rounded-xl bg-muted/40 p-3" >
@@ -1630,7 +1642,7 @@ onClick = {() => setStatusTarget(inst)}>
                       </div>
                       < div className = "rounded-xl bg-muted/40 p-3" >
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1" > Rate Used </p>
-                          < p className = "font-bold text-foreground" >₦{ fundResult.charge_per_sms } /SMS</p >
+                          <p className="font-bold text-foreground">₦{fundResult.charge_per_sms} /SMS</p>
                             </div>
                             < div className = "rounded-xl bg-muted/40 p-3" >
                               <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1" > Previous Balance </p>
@@ -1645,7 +1657,7 @@ onClick = {() => setStatusTarget(inst)}>
                                           <span className="text-sm font-semibold text-violet-700 dark:text-violet-300" > Your Profit </span>
                                             < span className = "text-lg font-extrabold text-violet-600" > { fmtN(fundResult.your_profit) } </span>
                                               </div>
-                                              < p className = "text-[11px] text-center text-muted-foreground" > Funded by < span className = "font-semibold" > { fundResult.funded_by } < /span> · {new Date(fundResult.funded_at).toLocaleString()}</p >
+                                              <p className="text-[11px] text-center text-muted-foreground">Funded by <span className="font-semibold">{fundResult.funded_by}</span> · {new Date(fundResult.funded_at).toLocaleString()}</p>
                                                 <DialogFooter>
                                                 <Button className="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 border-0" onClick = { closeFundModal } > Done </Button>
                                                   </DialogFooter>
@@ -1674,7 +1686,7 @@ onClick = {() => setStatusTarget(inst)}>
         <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
           <div className="flex-1 min-w-0" >
             <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300" > Wallet Created! </p>
-              < p className = "text-xs text-emerald-600 dark:text-emerald-400" > Rate: ₦{ createWalletResult.charge_per_sms } /SMS · Now fill in the amount to fund it.</p >
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">Rate: ₦{createWalletResult.charge_per_sms} /SMS · Now fill in the amount to fund it.</p>
                 </div>
                 </div>
               )
@@ -1711,14 +1723,14 @@ onClick = {() => setStatusTarget(inst)}>
   </div>
   </div>
   < div className = "space-y-1.5" >
-    <Label className="text-sm font-semibold" > Rate(₦/SMS)</Label >
+    <Label className="text-sm font-semibold">Rate(₦/SMS)</Label>
       <Input className="h-10 rounded-xl text-sm font-medium" placeholder = { String(fundTarget?.charge_per_sms ?? settingsForm.default_charge_per_sms)} value = { fundChargePerSms } onChange = {(e) => setFundChargePerSms(e.target.value)} />
         </div>
         </div>
 
         < div className = "space-y-1.5" >
-          <Label className="text-sm font-semibold" > Note < span className = "text-muted-foreground font-normal" > (optional) < /span></Label >
-            <Input className="h-10 rounded-xl text-sm" placeholder = "e.g. Monthly top-up" value = { fundNote } onChange = {(e) => setFundNote(e.target.value)} />
+          <Label className="text-sm font-semibold">Note <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input className="h-10 rounded-xl text-sm" placeholder="e.g. Monthly top-up" value={fundNote} onChange={(e) => setFundNote(e.target.value)} />
               </div>
 
               < div className = {`rounded-xl border-2 p-4 transition-all duration-300 ${smsUnitsPreview > 0 ? "border-emerald-400/60 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20" : "border-dashed border-border"}`}>
@@ -1726,10 +1738,10 @@ onClick = {() => setStatusTarget(inst)}>
                   <div className= "text-center space-y-1" >
               <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wide" > You are crediting </p>
                 < p className = "text-5xl font-black text-emerald-600 tabular-nums" > { fmt(smsUnitsPreview) } </p>
-                  < p className = "text-sm text-muted-foreground" > SMS units to < span className = "font-bold text-foreground" > { fundTarget?.name } < /span></p >
+                  <p className="text-sm text-muted-foreground">SMS units to <span className="font-bold text-foreground">{fundTarget?.name}</span></p>
                     <Separator className="my-2" />
                       <div className="flex items-center justify-center gap-6 text-xs" >
-                        <span className="text-muted-foreground" > Current: <span className="font-bold text-foreground" > { fmt(fundTarget?.sms_balance) } < /span></span >
+                        <span className="text-muted-foreground">Current: <span className="font-bold text-foreground">{fmt(fundTarget?.sms_balance)}</span></span>
                           <span className="text-emerald-600 font-bold" >→</span>
                             < span className = "text-emerald-600 font-bold" > New: ~{ fmt((fundTarget?.sms_balance ?? 0) + smsUnitsPreview)}</span>
                               </div>
@@ -1920,7 +1932,7 @@ className = "gap-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 ho
 }
 {
   viewLogs.length === 0 && (
-    <tr><td colSpan={ 6 } className = "px-3 py-10 text-center text-muted-foreground" > No logs found < /td></tr >
+    <tr><td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">No logs found</td></tr>
                               )
 }
 </tbody>
@@ -2025,15 +2037,15 @@ className = "gap-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 ho
               < div className = "grid grid-cols-2 gap-3 text-sm" >
                 <div className="rounded-xl bg-muted/40 p-3" >
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1" > Provider Cost </p>
-                    < p className = "font-bold" >₦{ editRateResult.provider_cost_per_sms } /SMS</p >
+                    <p className="font-bold">₦{editRateResult.provider_cost_per_sms} /SMS</p>
                       </div>
                       < div className = "rounded-xl bg-muted/40 p-3" >
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1" > New Margin </p>
                           < p className = "font-bold text-emerald-600" > { editRateResult.new_margin_percent.toFixed(1) } % </p>
                             </div>
                             </div>
-                            < p className = "text-[11px] text-center text-muted-foreground" > Updated by < span className = "font-semibold" > { editRateResult.updated_by } < /span> · {new Date(editRateResult.updated_at).toLocaleString()}</p >
-                              <DialogFooter><Button className="w-full rounded-xl" onClick = { closeEditRate } > Done < /Button></DialogFooter >
+                            <p className="text-[11px] text-center text-muted-foreground">Updated by <span className="font-semibold">{editRateResult.updated_by}</span> · {new Date(editRateResult.updated_at).toLocaleString()}</p>
+                              <DialogFooter><Button className="w-full rounded-xl" onClick={closeEditRate}>Done</Button></DialogFooter>
                                 </div>
           ) : (
   <>
@@ -2050,7 +2062,7 @@ className = "gap-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 ho
                 </div>
                 )}
 <div className="space-y-1.5" >
-  <Label className="text-sm font-semibold" > New Charge(₦/SMS)</Label >
+  <Label className="text-sm font-semibold">New Charge(₦/SMS)</Label>
     <Input className="h-10 rounded-xl text-sm font-medium" placeholder = "e.g. 35" value = { editRateValue } onChange = {(e) => setEditRateValue(e.target.value)} />
   </div>
                 { editRateTarget && editRateValue && parseFloat(editRateValue) > 0 && (
@@ -2065,7 +2077,7 @@ className = "gap-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 ho
       </div>
                 )}
 <div className="space-y-1.5" >
-  <Label className="text-sm font-semibold" > Reason < span className = "text-muted-foreground font-normal" > (optional) < /span></Label >
+  <Label className="text-sm font-semibold">Reason <span className="text-muted-foreground font-normal">(optional)</span></Label>
     <Input className="h-10 rounded-xl text-sm" placeholder = "e.g. Q2 pricing adjustment" value = { editRateReason } onChange = {(e) => setEditRateReason(e.target.value)} />
       </div>
       </div>
@@ -2160,7 +2172,7 @@ className = {`rounded-xl border-0 shadow-md gap-1.5 ${statusTarget?.status === "
                                       <div key= { r.institution_id } className = "flex items-center justify-between rounded-xl bg-muted/30 px-4 py-2.5 text-sm" >
                                         <div className="flex items-center gap-2" >
                                           { inst && <div className={ `h-6 w-6 rounded-lg bg-gradient-to-br ${avatarGradient(inst.name)} flex items-center justify-center` }> <span className="text-[9px] font-bold text-white" > { initials(inst.name)
-                                } < /span></div >}
+                                }</span></div>}
 <span className="font-medium text-foreground" > { inst?.name ?? `#${r.institution_id}`}</span>
   </div>
   < div className = "flex items-center gap-4 text-xs" >
@@ -2171,7 +2183,7 @@ className = {`rounded-xl border-0 shadow-md gap-1.5 ${statusTarget?.status === "
                   );
                 })}
 </div>
-  < DialogFooter > <Button className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 border-0" onClick = {() => { setBulkFundOpen(false); setBulkResult(null); }}> Done < /Button></DialogFooter >
+  <DialogFooter><Button className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 border-0" onClick={() => { setBulkFundOpen(false); setBulkResult(null); }}>Done</Button></DialogFooter>
     </div>
           ) : (
   <>
@@ -2210,7 +2222,7 @@ onChange = {(e) => setBulkSelections((prev) => ({ ...prev, [inst.id]: { ...sel, 
                   })}
 </div>
   < div className = "space-y-1.5" >
-    <Label className="text-sm font-semibold" > Note < span className = "text-muted-foreground font-normal" > (optional) < /span></Label >
+    <Label className="text-sm font-semibold">Note <span className="text-muted-foreground font-normal">(optional)</span></Label>
       <Input className="h-10 rounded-xl text-sm" placeholder = "e.g. Monthly batch top-up" value = { bulkNote } onChange = {(e) => setBulkNote(e.target.value)} />
         </div>
 {/* Summary */ }
@@ -2262,12 +2274,12 @@ className = "gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 h
       <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest" > Pricing </p>
         < div className = "grid grid-cols-2 gap-3" >
           <div className="space-y-1.5" >
-            <Label className="text-sm font-semibold" > Charge Price(₦/SMS)</Label >
+            <Label className="text-sm font-semibold">Charge Price(₦/SMS)</Label>
               <Input className="h-10 rounded-xl" value = { settingsForm.default_charge_per_sms } onChange = {(e) => setSettingsForm(f => ({ ...f, default_charge_per_sms: parseFloat(e.target.value) || 0 }))} />
                 < p className = "text-[11px] text-muted-foreground" > What you charge tenants </p>
                   </div>
                   < div className = "space-y-1.5" >
-                    <Label className="text-sm font-semibold" > Provider Cost(₦/SMS)</Label >
+                    <Label className="text-sm font-semibold">Provider Cost(₦/SMS)</Label>
                       <Input className="h-10 rounded-xl" value = { settingsForm.provider_cost_per_sms } onChange = {(e) => setSettingsForm(f => ({ ...f, provider_cost_per_sms: parseFloat(e.target.value) || 0 }))} />
                     < p className = "text-[11px] text-muted-foreground" > What you pay provider </p>
                     </div>

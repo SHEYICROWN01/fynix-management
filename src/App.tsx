@@ -57,6 +57,35 @@ const Settings = lazy(() => import("./pages/Settings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const TenantDashboard = lazy(() => import("./pages/TenantDashboard"));
 const SmsManagement = lazy(() => import("./pages/SmsManagement"));
+const EmailClient = lazy(() => import("./pages/EmailClient"));
+const VaultBanking = lazy(() => import("./pages/VaultBanking"));
+const VaultDetail = lazy(() => import("./pages/VaultDetail"));
+const SettlementCenter = lazy(() => import("./pages/SettlementCenter"));
+const TransactionMonitoring = lazy(() => import("./pages/TransactionMonitoring"));
+const FraudCenter = lazy(() => import("./pages/FraudCenter"));
+const ComplianceCenter = lazy(() => import("./pages/ComplianceCenter"));
+const APIIntegrations = lazy(() => import("./pages/APIIntegrations"));
+const AuditLogs = lazy(() => import("./pages/AuditLogs"));
+const VirtualAccounts = lazy(() => import("./pages/VirtualAccounts"));
+const DeveloperCenter = lazy(() => import("./pages/DeveloperCenter"));
+const ReportsCenter = lazy(() => import("./pages/ReportsCenter"));
+const BVNNINServices = lazy(() => import("./pages/BVNNINServices"));
+const SupportCenter = lazy(() => import("./pages/SupportCenter"));
+const OperationsHub = lazy(() => import("./pages/OperationsHub"));
+const FinanceHub = lazy(() => import("./pages/accounting/FinanceHub"));
+const FinOpsDashboard = lazy(() => import("./pages/accounting/FinOpsDashboard"));
+const RevenueCenter = lazy(() => import("./pages/accounting/RevenueCenter"));
+const ExpenseCenter = lazy(() => import("./pages/accounting/ExpenseCenter"));
+const CashFlowCenter = lazy(() => import("./pages/accounting/CashFlowCenter"));
+const GeneralLedger = lazy(() => import("./pages/accounting/GeneralLedger"));
+const FinancialReports = lazy(() => import("./pages/accounting/FinancialReports"));
+const BudgetCenter = lazy(() => import("./pages/accounting/BudgetCenter"));
+const FinancialMetrics = lazy(() => import("./pages/accounting/FinancialMetrics"));
+const FinAuditCenter = lazy(() => import("./pages/accounting/AuditCenter"));
+const InvestorCenter = lazy(() => import("./pages/accounting/InvestorCenter"));
+const CompanyAccounts = lazy(() => import("./pages/accounting/CompanyAccounts"));
+const OwnersDraw = lazy(() => import("./pages/accounting/OwnersDraw"));
+const RevenueConfig = lazy(() => import("./pages/accounting/RevenueConfig"));
 
 // ── Loading spinner ─────────────────────────────────────────────────────────
 
@@ -108,7 +137,36 @@ const App = () => (
                 <Route path="/users" element={<ProtectedRoute><SystemUsers /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
                 <Route path="/sms" element={<ProtectedRoute><SmsManagement /></ProtectedRoute>} />
+                <Route path="/email" element={<ProtectedRoute><EmailClient /></ProtectedRoute>} />
+                <Route path="/vault-banking" element={<ProtectedRoute><VaultBanking /></ProtectedRoute>} />
+                <Route path="/vault-banking/:vaultId" element={<ProtectedRoute><VaultDetail /></ProtectedRoute>} />
                 <Route path="/tenants/:tenantId/dashboard" element={<ProtectedRoute><TenantDashboard /></ProtectedRoute>} />
+                <Route path="/operations" element={<ProtectedRoute><OperationsHub /></ProtectedRoute>} />
+                <Route path="/settlement" element={<ProtectedRoute><SettlementCenter /></ProtectedRoute>} />
+                <Route path="/transactions" element={<ProtectedRoute><TransactionMonitoring /></ProtectedRoute>} />
+                <Route path="/fraud" element={<ProtectedRoute><FraudCenter /></ProtectedRoute>} />
+                <Route path="/compliance" element={<ProtectedRoute><ComplianceCenter /></ProtectedRoute>} />
+                <Route path="/api-integrations" element={<ProtectedRoute><APIIntegrations /></ProtectedRoute>} />
+                <Route path="/audit-logs" element={<ProtectedRoute><AuditLogs /></ProtectedRoute>} />
+                <Route path="/virtual-accounts" element={<ProtectedRoute><VirtualAccounts /></ProtectedRoute>} />
+                <Route path="/developer" element={<ProtectedRoute><DeveloperCenter /></ProtectedRoute>} />
+                <Route path="/reports" element={<ProtectedRoute><ReportsCenter /></ProtectedRoute>} />
+                <Route path="/bvn-nin" element={<ProtectedRoute><BVNNINServices /></ProtectedRoute>} />
+                <Route path="/support" element={<ProtectedRoute><SupportCenter /></ProtectedRoute>} />
+                <Route path="/accounting" element={<ProtectedRoute><FinanceHub /></ProtectedRoute>} />
+                <Route path="/accounting/dashboard" element={<ProtectedRoute><FinOpsDashboard /></ProtectedRoute>} />
+                <Route path="/accounting/revenue" element={<ProtectedRoute><RevenueCenter /></ProtectedRoute>} />
+                <Route path="/accounting/expenses" element={<ProtectedRoute><ExpenseCenter /></ProtectedRoute>} />
+                <Route path="/accounting/cashflow" element={<ProtectedRoute><CashFlowCenter /></ProtectedRoute>} />
+                <Route path="/accounting/ledger" element={<ProtectedRoute><GeneralLedger /></ProtectedRoute>} />
+                <Route path="/accounting/reports" element={<ProtectedRoute><FinancialReports /></ProtectedRoute>} />
+                <Route path="/accounting/budgets" element={<ProtectedRoute><BudgetCenter /></ProtectedRoute>} />
+                <Route path="/accounting/metrics" element={<ProtectedRoute><FinancialMetrics /></ProtectedRoute>} />
+                <Route path="/accounting/audit" element={<ProtectedRoute><FinAuditCenter /></ProtectedRoute>} />
+                <Route path="/accounting/investors" element={<ProtectedRoute><InvestorCenter /></ProtectedRoute>} />
+                <Route path="/accounting/accounts" element={<ProtectedRoute><CompanyAccounts /></ProtectedRoute>} />
+                <Route path="/accounting/owners-draw" element={<ProtectedRoute><OwnersDraw /></ProtectedRoute>} />
+                <Route path="/accounting/revenue-config" element={<ProtectedRoute><RevenueConfig /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

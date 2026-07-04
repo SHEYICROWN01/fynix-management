@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -42,6 +42,8 @@ import {
   RefreshCw,
   ArrowRight,
   ArrowLeft,
+  ChevronDown,
+  ChevronUp,
   Eye,
   EyeOff,
   Check,
@@ -71,7 +73,57 @@ import {
   Upload,
   ImageIcon,
   BarChart3,
-} from "lucide-react"; export default function TenantsNew() {
+  ShieldOff,
+  ShieldAlert,
+  Ban,
+  UserCheck,
+} from "lucide-react";
+
+// ─── Suspension reason categories ─────────────────────────────────────────────
+const SUSPEND_CATEGORIES = [
+  {
+    value: "Payment Overdue",
+    icon: CreditCard,
+    colorClass: "text-amber-600",
+    borderActive: "border-amber-400 bg-amber-50 dark:bg-amber-950/30",
+    borderIdle: "border-border hover:border-amber-300",
+    desc: "Unpaid invoices beyond due date",
+  },
+  {
+    value: "Policy Violation",
+    icon: AlertTriangle,
+    colorClass: "text-orange-600",
+    borderActive: "border-orange-400 bg-orange-50 dark:bg-orange-950/30",
+    borderIdle: "border-border hover:border-orange-300",
+    desc: "Terms of service breach",
+  },
+  {
+    value: "Security Concern",
+    icon: ShieldAlert,
+    colorClass: "text-red-600",
+    borderActive: "border-red-400 bg-red-50 dark:bg-red-950/30",
+    borderIdle: "border-border hover:border-red-300",
+    desc: "Suspicious activity detected",
+  },
+  {
+    value: "Under Review",
+    icon: Eye,
+    colorClass: "text-blue-600",
+    borderActive: "border-blue-400 bg-blue-50 dark:bg-blue-950/30",
+    borderIdle: "border-border hover:border-blue-300",
+    desc: "Account under investigation",
+  },
+  {
+    value: "Other",
+    icon: MoreHorizontal,
+    colorClass: "text-muted-foreground",
+    borderActive: "border-primary bg-primary/5",
+    borderIdle: "border-border hover:border-primary/40",
+    desc: "Custom reason specified below",
+  },
+];
+
+export default function TenantsNew() {
   // API Data State
   const navigate = useNavigate();
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -81,6 +133,8 @@ import {
     per_page: 10,
     current_page: 1,
     last_page: 1,
+    from: 0,
+    to: 0,
   });
 
   // UI State
@@ -88,6 +142,8 @@ import {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isCredentialsDialogOpen, setIsCredentialsDialogOpen] = useState(false);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
+  const [isSuspendDialogOpen, setIsSuspendDialogOpen] = useState(false);
+  const [isReactivateDialogOpen, setIsReactivateDialogOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [creationStep, setCreationStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
@@ -95,6 +151,16 @@ import {
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Danger zone toggle (Details dialog)
+  const [dangerZoneOpen, setDangerZoneOpen] = useState(false);
+
+  // Suspension State
+  const [suspendCategory, setSuspendCategory] = useState("");
+  const [suspendDetails, setSuspendDetails] = useState("");
+  const [suspendConfirmed, setSuspendConfirmed] = useState(false);
+  const [isProcessingSuspend, setIsProcessingSuspend] = useState(false);
+  const [reactivateNotes, setReactivateNotes] = useState("");
 
   // Modules State
   const [availableModules, setAvailableModules] = useState<Module[]>([]);
@@ -633,248 +699,492 @@ import {
     });
   };
 
+  // Suspend tenant
+  const handleSuspendTenant = async () => {
+    if (!selectedTenant || !suspendCategory) return;
+    setIsProcessingSuspend(true);
+    try {
+      const reason = suspendDetails.trim()
+        ? `${suspendCategory}: ${suspendDetails.trim()}`
+        : suspendCategory;
+      await api.suspendTenant(selectedTenant.id, reason);
+      showToast.success(`${selectedTenant.name} has been suspended`, {
+        description: "All system access has been revoked immediately.",
+      });
+      const updated = { ...selectedTenant, status: "suspended" as const, suspension_reason: reason, suspended_at: new Date().toISOString() };
+      setTenants((prev) => prev.map((t) => (t.id === selectedTenant.id ? updated : t)));
+      setSelectedTenant(updated);
+      setIsSuspendDialogOpen(false);
+      setSuspendCategory("");
+      setSuspendDetails("");
+      setSuspendConfirmed(false);
+    } catch (error: unknown) {
+      const apiErr = error as ApiError;
+      showToast.error("Failed to suspend tenant", { description: apiErr.message });
+    } finally {
+      setIsProcessingSuspend(false);
+    }
+  };
+
+  // Reactivate tenant
+  const handleReactivateTenant = async () => {
+    if (!selectedTenant) return;
+    setIsProcessingSuspend(true);
+    try {
+      await api.reactivateTenant(selectedTenant.id);
+      showToast.success(`${selectedTenant.name} has been reactivated`, {
+        description: "Full system access has been restored.",
+      });
+      const updated = { ...selectedTenant, status: "active" as const, suspension_reason: null, suspended_at: undefined };
+      setTenants((prev) => prev.map((t) => (t.id === selectedTenant.id ? updated : t)));
+      setSelectedTenant(updated);
+      setIsReactivateDialogOpen(false);
+      setReactivateNotes("");
+    } catch (error: unknown) {
+      const apiErr = error as ApiError;
+      showToast.error("Failed to reactivate tenant", { description: apiErr.message });
+    } finally {
+      setIsProcessingSuspend(false);
+    }
+  };
+
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedRows, setSelectedRows] = useState<number[]>([]);
+
+  const filteredTenants = useMemo(() => {
+    if (statusFilter === "all") return tenants;
+    return tenants.filter((t) => t.status === statusFilter);
+  }, [tenants, statusFilter]);
+
   return (
-    <DashboardLayout title= "Tenants Management" >
-    <div className="space-y-6" >
-      {/* Header */ }
-      < div className = "flex items-center justify-between" >
-        <div>
-        <h1 className="text-3xl font-bold" > Tenants Management </h1>
-          < p className = "text-muted-foreground mt-1" >
-            Manage all client organizations and subscriptions
-              </p>
-              </div>
-              < Button onClick = {() => setIsCreateDialogOpen(true)
-} size = "lg" >
-  <Plus className="mr-2 h-4 w-4" />
-    New Tenant
-      </Button>
-      </div>
+    <DashboardLayout title="Institutions">
+      {/* ── Main content ─────────────────────────────────────────────────── */}
+      <div className="space-y-5">
 
-{/* Stats Cards */ }
-<div className="grid gap-4 md:grid-cols-4" >
-  <div className="rounded-lg border bg-card p-4" >
-    <div className="flex items-center gap-3" >
-      <div className="rounded-lg bg-primary/10 p-2" >
-        <Building2 className="h-5 w-5 text-primary" />
-          </div>
-          < div >
-          <p className="text-2xl font-semibold" > { pagination.total } </p>
-            < p className = "text-sm text-muted-foreground" > Total Tenants </p>
-              </div>
-              </div>
-              </div>
-
-              < div className = "rounded-lg border bg-card p-4" >
-                <div className="flex items-center gap-3" >
-                  <div className="rounded-lg bg-success/10 p-2" >
-                    <Check className="h-5 w-5 text-success" />
-                      </div>
-                      < div >
-                      <p className="text-2xl font-semibold" >
-                        { tenants.filter((t) => t.status === "active").length }
-                        </p>
-                        < p className = "text-sm text-muted-foreground" > Active </p>
-                          </div>
-                          </div>
-                          </div>
-
-                          < div className = "rounded-lg border bg-card p-4" >
-                            <div className="flex items-center gap-3" >
-                              <div className="rounded-lg bg-warning/10 p-2" >
-                                <AlertTriangle className="h-5 w-5 text-warning" />
-                                  </div>
-                                  < div >
-                                  <p className="text-2xl font-semibold" >
-                                    { tenants.filter((t) => t.status === "suspended").length }
-                                    </p>
-                                    < p className = "text-sm text-muted-foreground" > Suspended </p>
-                                      </div>
-                                      </div>
-                                      </div>
-
-                                      < div className = "rounded-lg border bg-card p-4" >
-                                        <div className="flex items-center gap-3" >
-                                          <div className="rounded-lg bg-destructive/10 p-2" >
-                                            <X className="h-5 w-5 text-destructive" />
-                                              </div>
-                                              < div >
-                                              <p className="text-2xl font-semibold" >
-                                                { tenants.filter((t) => t.status === "cancelled").length }
-                                                </p>
-                                                < p className = "text-sm text-muted-foreground" > Cancelled </p>
-                                                  </div>
-                                                  </div>
-                                                  </div>
-                                                  </div>
-
-{/* Search and Filter */ }
-<div className="flex items-center gap-4" >
-  <div className="relative flex-1" >
-    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-              placeholder="Search tenants..."
-value = { searchQuery }
-onChange = {(e) => setSearchQuery(e.target.value)}
-className = "pl-10"
-  />
-  </div>
-  < Button
-variant = "outline"
-onClick = {() => fetchTenants(pagination.current_page, searchQuery)}
-disabled = { isLoadingTenants }
-  >
-  <RefreshCw className={ `h-4 w-4 mr-2 ${isLoadingTenants ? "animate-spin" : ""}` } />
-Refresh
-  </Button>
-  </div>
-
-{/* Tenants Table */ }
-<div className="rounded-lg border bg-card" >
-  <div className="overflow-x-auto" >
-    <table className="w-full" >
-      <thead>
-      <tr className="border-b" >
-        <th className="px-4 py-3 text-left text-sm font-medium" > Organization </th>
-          < th className = "px-4 py-3 text-left text-sm font-medium" > Status </th>
-            < th className = "px-4 py-3 text-left text-sm font-medium" > Subdomain </th>
-              < th className = "px-4 py-3 text-left text-sm font-medium" > Contact </th>
-                < th className = "px-4 py-3 text-left text-sm font-medium" > Country </th>
-                  < th className = "px-4 py-3 text-left text-sm font-medium" > Created </th>
-                    < th className = "px-4 py-3 text-right text-sm font-medium" > Actions </th>
-                      </tr>
-                      </thead>
-                      <tbody>
-{
-  isLoadingTenants ? (
-    <tr>
-    <td colSpan= { 7} className = "px-4 py-12 text-center" >
-      <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-        <p className="text-sm text-muted-foreground mt-2" > Loading tenants...</p>
-          </td>
-          </tr>
-            ) : tenants.length === 0 ? (
-    <tr>
-    <td colSpan= { 7} className = "px-4 py-12 text-center" >
-      <Building2 className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="font-medium" > No tenants found </p>
-          < p className = "text-sm text-muted-foreground mt-1" >
-          {
-            searchQuery
-            ? "Try adjusting your search criteria"
-              : "Get started by creating your first tenant"
-          }
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-widest font-medium text-muted-foreground/70">
+              QuovaTech BOC · Institutions
             </p>
-            </td>
-            </tr>
-            ) : (
-    tenants.map((tenant) => (
-      <tr key= { tenant.id } className = "border-b last:border-0 hover:bg-muted/50" >
-      <td className="px-4 py-3" >
-    <div>
-    <p className="font-medium" > { tenant.name } </p>
-    < p className = "text-sm text-muted-foreground" > { tenant.slug } </p>
-    </div>
-    </td>
-    < td className = "px-4 py-3" >
-    <StatusBadge status={ tenant.status } />
-    </td>
-    < td className = "px-4 py-3" >
-    <code className="text-xs bg-muted px-2 py-1 rounded" >
-    { tenant.subdomain }
-    </code>
-    </td>
-    < td className = "px-4 py-3" >
-    <div>
-    <p className="text-sm" > { tenant.contact_email } </p>
-                      {
-        tenant.contact_phone && (
-          <p className="text-xs text-muted-foreground"> { tenant.contact_phone } </p>
-                      )}
-</div>
-  </td>
-  < td className = "px-4 py-3 text-sm" > { tenant.country } </td>
-    < td className = "px-4 py-3 text-sm text-muted-foreground" >
-      { formatDate(tenant.created_at) }
-      </td>
-      < td className = "px-4 py-3 text-right" >
-        <DropdownMenu>
-        <DropdownMenuTrigger asChild >
-        <Button variant="ghost" size = "sm" >
-          <MoreHorizontal className="h-4 w-4" />
+            <h1 className="text-2xl font-bold tracking-tight text-foreground mt-0.5">
+              Tenants Management
+            </h1>
+            <p className="text-[13px] text-muted-foreground mt-0.5">
+              {pagination.total} institution{pagination.total !== 1 ? "s" : ""} · {tenants.filter((t) => t.status === "active").length} active
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <Download className="h-3.5 w-3.5" />
+              Export
             </Button>
-            </DropdownMenuTrigger>
-            < DropdownMenuContent align = "end" >
-              <DropdownMenuLabel>Actions </DropdownMenuLabel>
-              < DropdownMenuSeparator />
-              <DropdownMenuItem
-                          onClick={
-  () => {
-    setSelectedTenant(tenant);
-    fetchTenantModules(tenant.id);
-    setIsDetailsDialogOpen(true);
-  }
-}
-                        >
-  <Eye className="mr-2 h-4 w-4" />
-    View Details
-      </DropdownMenuItem>
-      < DropdownMenuItem
-onClick = { () => navigate(`/tenants/${tenant.id}/dashboard`) }
->
-  <BarChart3 className="mr-2 h-4 w-4" />
-    View Dashboard
-      </DropdownMenuItem>
-      < DropdownMenuItem disabled >
-        Edit Tenant
-          </DropdownMenuItem>
-          < DropdownMenuSeparator />
-          <DropdownMenuItem className="text-destructive" disabled >
-            Suspend Tenant
-              </DropdownMenuItem>
-              </DropdownMenuContent>
-              </DropdownMenu>
-              </td>
-              </tr>
-              ))
-            )}
-</tbody>
-  </table>
-  </div>
+            <Button size="sm" className="gap-1.5" onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              New Tenant
+            </Button>
+          </div>
+        </div>
 
-{/* Pagination */ }
-{
-  !isLoadingTenants && tenants.length > 0 && (
-    <div className="flex items-center justify-between border-t px-4 py-3" >
-      <p className="text-sm text-muted-foreground" >
-        Showing { pagination.from || 0 } to { pagination.to || 0 } of { pagination.total } tenants
-          </p>
-          < div className = "flex items-center gap-2" >
+        {/* KPI Cards */}
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+          {/* Total */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                <Building2 className="h-4 w-4 text-primary" />
+              </div>
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <TrendingUp className="h-3 w-3" />
+                All
+              </span>
+            </div>
+            <p className="text-[28px] font-bold tracking-tight text-foreground leading-none">{pagination.total}</p>
+            <p className="text-[12px] text-muted-foreground mt-1">Total Tenants</p>
+            <div className="flex items-end gap-0.5 mt-3 h-7">
+              {[3,5,4,7,6,9,8,10,9,12].map((v, i) => (
+                <div key={i} className="flex-1 rounded-sm bg-primary/20 dark:bg-primary/30" style={{ height: `${v * 8}%` }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Active */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">Active</span>
+            </div>
+            <p className="text-[28px] font-bold tracking-tight text-foreground leading-none">{tenants.filter((t) => t.status === "active").length}</p>
+            <p className="text-[12px] text-muted-foreground mt-1">Active Institutions</p>
+            <div className="flex items-end gap-0.5 mt-3 h-7">
+              {[4,6,5,8,7,9,8,11,10,12].map((v, i) => (
+                <div key={i} className="flex-1 rounded-sm bg-emerald-500/20 dark:bg-emerald-500/30" style={{ height: `${v * 8}%` }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Suspended */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/10">
+                <ShieldOff className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              </div>
+              <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">Suspended</span>
+            </div>
+            <p className="text-[28px] font-bold tracking-tight text-foreground leading-none">{tenants.filter((t) => t.status === "suspended").length}</p>
+            <p className="text-[12px] text-muted-foreground mt-1">Suspended Tenants</p>
+            <div className="flex items-end gap-0.5 mt-3 h-7">
+              {[2,3,2,4,3,2,4,3,2,1].map((v, i) => (
+                <div key={i} className="flex-1 rounded-sm bg-amber-500/20 dark:bg-amber-500/30" style={{ height: `${v * 15}%` }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Cancelled */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-500/10">
+                <XCircle className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+              </div>
+              <span className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">Cancelled</span>
+            </div>
+            <p className="text-[28px] font-bold tracking-tight text-foreground leading-none">{tenants.filter((t) => t.status === "cancelled").length}</p>
+            <p className="text-[12px] text-muted-foreground mt-1">Cancelled Tenants</p>
+            <div className="flex items-end gap-0.5 mt-3 h-7">
+              {[1,2,1,3,2,1,2,1,2,1].map((v, i) => (
+                <div key={i} className="flex-1 rounded-sm bg-rose-500/20 dark:bg-rose-500/30" style={{ height: `${v * 18}%` }} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Filter Tabs + Search */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* Tab pills */}
+          <div className="flex items-center gap-1 rounded-lg bg-muted/60 border border-border p-1">
+            {[
+              { value: "all", label: "All", count: pagination.total },
+              { value: "active", label: "Active", count: tenants.filter((t) => t.status === "active").length },
+              { value: "pending", label: "Pending", count: tenants.filter((t) => t.status === "pending").length },
+              { value: "suspended", label: "Suspended", count: tenants.filter((t) => t.status === "suspended").length },
+              { value: "cancelled", label: "Cancelled", count: tenants.filter((t) => t.status === "cancelled").length },
+            ].map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => setStatusFilter(tab.value)}
+                className={[
+                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-all whitespace-nowrap",
+                  statusFilter === tab.value
+                    ? "bg-card shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                ].join(" ")}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className={[
+                    "rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 text-[10px] font-bold",
+                    statusFilter === tab.value
+                      ? "bg-primary/10 text-primary"
+                      : "bg-muted-foreground/10 text-muted-foreground",
+                  ].join(" ")}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Search + Refresh */}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search institutions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-[13px] w-56"
+              />
+            </div>
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchTenants(pagination.current_page, searchQuery)}
+              disabled={isLoadingTenants}
+              className="h-9 w-9 p-0"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoadingTenants ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="w-10 pl-4 py-3">
+                    <Checkbox
+                      checked={selectedRows.length === filteredTenants.length && filteredTenants.length > 0}
+                      onCheckedChange={(v) =>
+                        setSelectedRows(!!v ? filteredTenants.map((t) => t.id) : [])
+                      }
+                    />
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Organization
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Subdomain
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Contact
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Location
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Created
+                  </th>
+                  <th className="px-4 py-3 w-48" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {isLoadingTenants ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-16 text-center">
+                      <Loader2 className="h-7 w-7 animate-spin mx-auto text-primary" />
+                      <p className="text-[13px] text-muted-foreground mt-2">Loading institutions...</p>
+                    </td>
+                  </tr>
+                ) : filteredTenants.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-16 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                          <Building2 className="h-7 w-7 text-muted-foreground/50" />
+                        </div>
+                        <p className="font-medium text-foreground">No institutions found</p>
+                        <p className="text-[13px] text-muted-foreground">
+                          {searchQuery
+                            ? "Try adjusting your search or filter"
+                            : statusFilter !== "all"
+                            ? `No ${statusFilter} tenants at this time`
+                            : "Get started by creating your first tenant"}
+                        </p>
+                        {!searchQuery && statusFilter === "all" && (
+                          <Button size="sm" className="mt-2 gap-1.5" onClick={() => setIsCreateDialogOpen(true)}>
+                            <Plus className="h-3.5 w-3.5" />
+                            New Tenant
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTenants.map((tenant) => (
+                    <tr
+                      key={tenant.id}
+                      className={[
+                        "group transition-colors hover:bg-muted/40",
+                        selectedRows.includes(tenant.id) ? "bg-primary/5" : "",
+                      ].join(" ")}
+                    >
+                      {/* Checkbox */}
+                      <td className="pl-4 py-3.5">
+                        <Checkbox
+                          checked={selectedRows.includes(tenant.id)}
+                          onCheckedChange={(v) =>
+                            setSelectedRows((prev) =>
+                              !!v ? [...prev, tenant.id] : prev.filter((id) => id !== tenant.id)
+                            )
+                          }
+                        />
+                      </td>
+
+                      {/* Organization */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-[13px] font-bold text-primary uppercase">
+                            {tenant.name.slice(0, 2)}
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-semibold text-foreground leading-tight">{tenant.name}</p>
+                            <p className="text-[11px] text-muted-foreground">{tenant.slug}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 py-3.5">
+                        <div>
+                          <StatusBadge status={tenant.status} />
+                          {tenant.status === "suspended" && tenant.suspension_reason && (
+                            <p className="text-[10px] text-amber-600 mt-0.5 max-w-[130px] truncate" title={tenant.suspension_reason}>
+                              {tenant.suspension_reason}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Subdomain */}
+                      <td className="px-4 py-3.5">
+                        <code className="text-[11px] font-mono bg-muted px-2 py-1 rounded-md border border-border/60">
+                          {tenant.subdomain}
+                        </code>
+                      </td>
+
+                      {/* Contact */}
+                      <td className="px-4 py-3.5">
+                        <div>
+                          <p className="text-[12px] text-foreground">{tenant.contact_email}</p>
+                          {tenant.contact_phone && (
+                            <p className="text-[11px] text-muted-foreground">{tenant.contact_phone}</p>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Location */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5">
+                          <MapPin className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                          <span className="text-[12px] text-foreground">{tenant.country}</span>
+                        </div>
+                      </td>
+
+                      {/* Created */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                          <span className="text-[12px] text-muted-foreground">{formatDate(tenant.created_at)}</span>
+                        </div>
+                      </td>
+
+                      {/* Actions — inline icon buttons, no dropdown */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-150">
+
+                          {/* View Details */}
+                          <button
+                            title="View Details"
+                            onClick={() => {
+                              setSelectedTenant(tenant);
+                              fetchTenantModules(tenant.id);
+                              setDangerZoneOpen(false);
+                              setIsDetailsDialogOpen(true);
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          >
+                            <Eye className="h-[15px] w-[15px]" />
+                          </button>
+
+                          {/* Dashboard */}
+                          <button
+                            title="View Dashboard"
+                            onClick={() => navigate(`/tenants/${tenant.id}/dashboard`)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          >
+                            <BarChart3 className="h-[15px] w-[15px]" />
+                          </button>
+
+                          {/* Manage Modules */}
+                          <button
+                            title="Manage Modules"
+                            onClick={() => openManageModulesDialog(tenant)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          >
+                            <Package className="h-[15px] w-[15px]" />
+                          </button>
+
+                          {/* Divider */}
+                          <span className="mx-1 h-4 w-px bg-border" />
+
+                          {/* Reactivate — only shown when suspended (safe action, quick access) */}
+                          {tenant.status === "suspended" ? (
+                            <button
+                              title="Reactivate Tenant"
+                              onClick={() => {
+                                setSelectedTenant(tenant);
+                                setIsReactivateDialogOpen(true);
+                              }}
+                              className="flex h-8 items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 text-[11px] font-semibold text-emerald-600 hover:bg-emerald-500/20 transition-colors dark:text-emerald-400"
+                            >
+                              <UserCheck className="h-3.5 w-3.5" />
+                              Reactivate
+                            </button>
+                          ) : (
+                            /* Open full detail — primary CTA */
+                            <button
+                              title="Open Tenant"
+                              onClick={() => {
+                                setSelectedTenant(tenant);
+                                fetchTenantModules(tenant.id);
+                                setDangerZoneOpen(false);
+                                setIsDetailsDialogOpen(true);
+                              }}
+                              className="flex h-8 items-center gap-1 rounded-lg bg-primary/10 border border-primary/20 px-2.5 text-[11px] font-semibold text-primary hover:bg-primary/15 transition-colors"
+                            >
+                              Open
+                              <ArrowRight className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {!isLoadingTenants && filteredTenants.length > 0 && (
+            <div className="flex items-center justify-between border-t border-border px-4 py-3 bg-muted/20">
+              <p className="text-[12px] text-muted-foreground">
+                Showing{" "}
+                <span className="font-medium text-foreground">{pagination.from || 0}</span>
+                {" "}–{" "}
+                <span className="font-medium text-foreground">{pagination.to || 0}</span>
+                {" "}of{" "}
+                <span className="font-medium text-foreground">{pagination.total}</span>
+                {" "}institutions
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
                   variant="outline"
-  size = "sm"
-  onClick = {() => fetchTenants(pagination.current_page - 1, searchQuery)
-}
-disabled = { pagination.current_page === 1 }
-  >
-  Previous
-  </Button>
-  < span className = "text-sm" >
-    Page { pagination.current_page } of { pagination.last_page }
-</span>
-  < Button
-variant = "outline"
-size = "sm"
-onClick = {() => fetchTenants(pagination.current_page + 1, searchQuery)}
-disabled = { pagination.current_page === pagination.last_page }
-  >
-  Next
-  </Button>
-  </div>
-  </div>
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={() => fetchTenants(pagination.current_page - 1, searchQuery)}
+                  disabled={pagination.current_page === 1}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Prev
+                </Button>
+                <span className="px-3 text-[12px] text-muted-foreground">
+                  {pagination.current_page} / {pagination.last_page}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={() => fetchTenants(pagination.current_page + 1, searchQuery)}
+                  disabled={pagination.current_page === pagination.last_page}
+                >
+                  Next
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
           )}
-</div>
-  </div>
+        </div>
+
+      </div>
+      {/* ── Dialogs follow below (unchanged) ────────────────────────────── */}
 
 {/* Create Tenant Dialog */ }
 <Dialog open={ isCreateDialogOpen } onOpenChange = {(open) => {
@@ -1628,7 +1938,7 @@ className = "flex items-center gap-1 rounded-md border border-primary/30 bg-back
     </Dialog>
 
 {/* Tenant Details Dialog */ }
-<Dialog open={ isDetailsDialogOpen } onOpenChange = { setIsDetailsDialogOpen } >
+<Dialog open={isDetailsDialogOpen} onOpenChange={(open) => { setIsDetailsDialogOpen(open); if (!open) setDangerZoneOpen(false); }}>
   <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 gap-0" aria-describedby={undefined}>
     <DialogTitle className="sr-only">{selectedTenant ? `${selectedTenant.name} — Tenant Details` : "Tenant Details"}</DialogTitle>
     { selectedTenant && (
@@ -2356,7 +2666,84 @@ style = {{ backgroundColor: selectedTenant.branding.accent_color }}
     )
 }
 </p>
-  < div className = "flex gap-2" >
+  {/* ── Danger Zone ─────────────────────────────────────────────── */}
+  <div className="mt-4 rounded-xl border-2 border-dashed border-destructive/25 overflow-hidden">
+    <button
+      type="button"
+      onClick={() => setDangerZoneOpen((p) => !p)}
+      className="w-full flex items-center justify-between px-4 py-3 hover:bg-destructive/5 transition-colors group/dz"
+    >
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-destructive/10">
+          <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+        </div>
+        <div className="text-left">
+          <p className="text-[12px] font-bold text-destructive leading-tight">Sensitive Operations</p>
+          <p className="text-[10px] text-destructive/60 leading-tight">Account suspension · irreversible effects</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] uppercase tracking-widest text-destructive/50 font-semibold">
+          {dangerZoneOpen ? "Lock" : "Unlock"}
+        </span>
+        {dangerZoneOpen
+          ? <ChevronUp className="h-4 w-4 text-destructive/40" />
+          : <ChevronDown className="h-4 w-4 text-destructive/40" />}
+      </div>
+    </button>
+
+    {dangerZoneOpen && (
+      <div className="border-t border-destructive/20 bg-destructive/[0.03] px-4 py-4 space-y-3">
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          These actions take effect immediately and cannot be undone from this screen.
+          Only proceed if you have verified the reason and have authority to act.
+        </p>
+
+        {selectedTenant.status === "suspended" ? (
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+            <div>
+              <p className="text-[13px] font-semibold text-foreground">Reactivate Tenant</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Restore full system access for all users</p>
+            </div>
+            <Button
+              size="sm"
+              className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+              onClick={() => {
+                setIsDetailsDialogOpen(false);
+                setDangerZoneOpen(false);
+                setIsReactivateDialogOpen(true);
+              }}
+            >
+              <UserCheck className="h-3.5 w-3.5" />
+              Reactivate
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
+            <div>
+              <p className="text-[13px] font-semibold text-destructive">Suspend Tenant</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Immediately revoke all logins, sessions & API tokens</p>
+            </div>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="shrink-0 gap-1.5"
+              onClick={() => {
+                setIsDetailsDialogOpen(false);
+                setDangerZoneOpen(false);
+                setIsSuspendDialogOpen(true);
+              }}
+            >
+              <Ban className="h-3.5 w-3.5" />
+              Suspend
+            </Button>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+
+  < div className = "flex gap-2 mt-4" >
     <Button variant="outline" size = "sm" onClick = {() => setIsDetailsDialogOpen(false)}> Close </Button>
       < Button variant = "outline" size = "sm" onClick = {() => { setIsDetailsDialogOpen(false); navigate(`/tenants/${selectedTenant.id}/dashboard`); }}>
         <BarChart3 className="mr-2 h-3.5 w-3.5" /> View Dashboard
@@ -2599,6 +2986,226 @@ disabled = { modulesToAdd.length === 0 }
   </DialogFooter>
   </DialogContent>
   </Dialog>
+
+
+{/* ── Suspend Tenant Dialog ───────────────────────────────────────────── */}
+<Dialog
+  open={isSuspendDialogOpen}
+  onOpenChange={(open) => {
+    if (!open) {
+      setSuspendCategory("");
+      setSuspendDetails("");
+      setSuspendConfirmed(false);
+    }
+    setIsSuspendDialogOpen(open);
+  }}
+>
+  <DialogContent className="w-[calc(100vw-2rem)] max-w-lg p-0 overflow-hidden gap-0 max-h-[90vh] flex flex-col">
+    <div className="bg-gradient-to-br from-red-600 via-rose-600 to-orange-600 px-5 pt-5 pb-4 shrink-0">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 backdrop-blur border border-white/20 shadow-lg shrink-0">
+          <Ban className="h-5 w-5 text-white" />
+        </div>
+        <div className="min-w-0">
+          <DialogTitle className="text-base font-bold text-white leading-tight">
+            Suspend Tenant Account
+          </DialogTitle>
+          <p className="text-xs text-white/70 mt-0.5 truncate">{selectedTenant?.name}</p>
+        </div>
+      </div>
+    </div>
+    <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2.5">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">
+              Immediate effect upon suspension
+            </p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+              {[
+                "Admin & staff logins blocked",
+                "Active sessions terminated",
+                "Member portal access cut",
+                "All API tokens revoked",
+              ].map((item) => (
+                <p key={item} className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+                  <X className="h-2.5 w-2.5 shrink-0" /> {item}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p className="text-sm font-semibold mb-2">
+          Reason for suspension <span className="text-destructive">*</span>
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {SUSPEND_CATEGORIES.map((cat) => {
+            const Icon = cat.icon;
+            const isSelected = suspendCategory === cat.value;
+            return (
+              <button
+                key={cat.value}
+                type="button"
+                onClick={() => setSuspendCategory(cat.value)}
+                className={`flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition-all ${
+                  isSelected ? cat.borderActive : cat.borderIdle
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <Icon className={`h-4 w-4 ${isSelected ? cat.colorClass : "text-muted-foreground"}`} />
+                  {isSelected && <Check className={`h-3.5 w-3.5 ${cat.colorClass}`} />}
+                </div>
+                <p className={`text-xs font-semibold leading-tight ${isSelected ? cat.colorClass : "text-foreground"}`}>
+                  {cat.value}
+                </p>
+                <p className="text-[10px] text-muted-foreground leading-tight">{cat.desc}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div>
+        <label className="text-sm font-semibold block mb-1.5">
+          Additional details <span className="text-muted-foreground font-normal">(optional)</span>
+        </label>
+        <textarea
+          rows={2}
+          value={suspendDetails}
+          onChange={(e) => setSuspendDetails(e.target.value)}
+          placeholder={`e.g., "Invoice #INV-2024-041 (₦70,000) unpaid after 2 billing cycles."`}
+          className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-destructive/30 focus:border-destructive resize-none"
+        />
+      </div>
+      <label className="flex items-start gap-3 cursor-pointer group select-none">
+        <Checkbox
+          checked={suspendConfirmed}
+          onCheckedChange={(v) => setSuspendConfirmed(!!v)}
+          className="mt-0.5 border-destructive data-[state=checked]:bg-destructive data-[state=checked]:border-destructive shrink-0"
+        />
+        <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors leading-relaxed">
+          I confirm that <span className="font-semibold text-foreground">{selectedTenant?.name}</span> will be
+          suspended immediately and all access revoked.
+        </span>
+      </label>
+    </div>
+    <div className="border-t px-5 py-4 flex flex-col-reverse sm:flex-row gap-2 shrink-0">
+      <Button
+        variant="outline"
+        onClick={() => setIsSuspendDialogOpen(false)}
+        disabled={isProcessingSuspend}
+        className="flex-1 sm:flex-none"
+      >
+        Cancel
+      </Button>
+      <Button
+        onClick={handleSuspendTenant}
+        disabled={!suspendCategory || !suspendConfirmed || isProcessingSuspend}
+        className="flex-1 sm:flex-none bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+      >
+        {isProcessingSuspend ? (
+          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Suspending...</>
+        ) : (
+          <><Ban className="mr-2 h-4 w-4" /> Suspend Account</>
+        )}
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
+
+{/* ── Reactivate Tenant Dialog ──────────────────────────────────────────── */}
+<Dialog
+  open={isReactivateDialogOpen}
+  onOpenChange={(open) => {
+    if (!open) setReactivateNotes("");
+    setIsReactivateDialogOpen(open);
+  }}
+>
+  <DialogContent className="w-[calc(100vw-2rem)] max-w-md p-0 overflow-hidden gap-0 max-h-[90vh] flex flex-col">
+    <div className="bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 px-5 pt-5 pb-4 shrink-0">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 backdrop-blur border border-white/20 shadow-lg shrink-0">
+          <UserCheck className="h-5 w-5 text-white" />
+        </div>
+        <div className="min-w-0">
+          <DialogTitle className="text-base font-bold text-white leading-tight">
+            Reactivate Tenant Access
+          </DialogTitle>
+          <p className="text-xs text-white/70 mt-0.5 truncate">{selectedTenant?.name}</p>
+        </div>
+      </div>
+    </div>
+    <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+      {selectedTenant?.suspension_reason && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-1">
+            Previously suspended for
+          </p>
+          <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">
+            {selectedTenant.suspension_reason}
+          </p>
+          {selectedTenant.suspended_at && (
+            <p className="text-xs text-amber-600/70 mt-1">
+              Since {formatDate(selectedTenant.suspended_at)}
+            </p>
+          )}
+        </div>
+      )}
+      <div className="rounded-xl border bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 px-4 py-3">
+        <div className="flex items-start gap-2.5">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-1">
+              Access restored upon reactivation
+            </p>
+            <div className="space-y-0.5 text-xs text-emerald-700 dark:text-emerald-400">
+              {["Admin panel login enabled", "Staff and member access restored", "All subscribed modules resume"].map((item) => (
+                <p key={item} className="flex items-center gap-1.5">
+                  <Check className="h-3 w-3 shrink-0" /> {item}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <label className="text-sm font-semibold block mb-1.5">
+          Resolution notes <span className="text-muted-foreground font-normal">(optional)</span>
+        </label>
+        <textarea
+          rows={3}
+          value={reactivateNotes}
+          onChange={(e) => setReactivateNotes(e.target.value)}
+          placeholder="e.g., 'Outstanding invoice of ₦70,000 cleared on 28 Jun 2026.'"
+          className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 resize-none"
+        />
+      </div>
+    </div>
+    <div className="border-t px-5 py-4 flex flex-col-reverse sm:flex-row gap-2 shrink-0">
+      <Button
+        variant="outline"
+        onClick={() => setIsReactivateDialogOpen(false)}
+        disabled={isProcessingSuspend}
+        className="flex-1 sm:flex-none"
+      >
+        Cancel
+      </Button>
+      <Button
+        onClick={handleReactivateTenant}
+        disabled={isProcessingSuspend}
+        className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white"
+      >
+        {isProcessingSuspend ? (
+          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reactivating...</>
+        ) : (
+          <><UserCheck className="mr-2 h-4 w-4" /> Reactivate Access</>
+        )}
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
 
   </DashboardLayout>
   );
