@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import type { CreateTenantData, Tenant, Module, TenantModule, TenantBranding, ApiError } from "@/lib/api";
 import { toast as showToast } from "sonner";
+import { LoginStudio, emptyLoginProfile, type LoginProfile } from "@/components/login-studio/LoginStudio";
+import { LoginDesignView, normaliseDesign, type LoginDesign } from "@/components/login-templates/LoginDesignView";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -77,6 +79,7 @@ import {
   ShieldAlert,
   Ban,
   UserCheck,
+  Sparkles,
 } from "lucide-react";
 
 // ─── Suspension reason categories ─────────────────────────────────────────────
@@ -186,6 +189,37 @@ export default function TenantsNew() {
   const [brandingLogoPreview, setBrandingLogoPreview] = useState<string | null>(null);
   const [brandingColors, setBrandingColors] = useState({ ...DEFAULT_COLORS });
   const [colorHexInputs, setColorHexInputs] = useState({ ...DEFAULT_COLORS });
+
+  // Login Studio (step 4): the institution's own AI-designed login page
+  const [loginDesign, setLoginDesign] = useState<LoginDesign | null>(null);
+  const [loginProfile, setLoginProfile] = useState<LoginProfile | null>(null);
+  const [isStudioOpen, setIsStudioOpen] = useState(false);
+  // Login Studio for an existing institution (from its details)
+  const [editStudio, setEditStudio] = useState<{ tenant: Tenant; design: LoginDesign | null; profile: LoginProfile } | null>(null);
+  const [loadingStudioFor, setLoadingStudioFor] = useState<number | null>(null);
+
+  const openLoginStudioFor = async (tenant: Tenant) => {
+    setLoadingStudioFor(tenant.id);
+    try {
+      const res = await api.getTenantLoginDesign(tenant.id);
+      const saved = res.data?.login_profile as Partial<LoginProfile> | null;
+      const design = normaliseDesign(res.data?.login_design, tenant.name);
+      setEditStudio({
+        tenant,
+        design,
+        profile: emptyLoginProfile({
+          name: tenant.name, city: tenant.city ?? "", state: tenant.state ?? "",
+          support_phone: (tenant as unknown as { contact_phone?: string }).contact_phone ?? "",
+          support_email: (tenant as unknown as { contact_email?: string }).contact_email ?? "",
+          ...(saved ? { ...saved, year_founded: saved.year_founded ? String(saved.year_founded) : "", name: tenant.name } : {}),
+        }),
+      });
+    } catch (e) {
+      showToast.error("Couldn't open the Login Studio", { description: (e as ApiError)?.message || "Please try again." });
+    } finally {
+      setLoadingStudioFor(null);
+    }
+  };
 
   // Form state - API compatible
   const [newTenant, setNewTenant] = useState<CreateTenantData>({
@@ -539,6 +573,12 @@ export default function TenantsNew() {
       setCreationStep(2);
     } else if (creationStep === 2 && validateStep2()) {
       setCreationStep(3);
+    } else if (creationStep === 3) {
+      if (selectedModules.length === 0) {
+        showToast.error("Please select at least one module");
+        return;
+      }
+      setCreationStep(4);
     }
   };
 
@@ -580,6 +620,8 @@ export default function TenantsNew() {
         secondary_color: brandingColors.secondary_color,
         accent_color: brandingColors.accent_color,
         background_color: brandingColors.background_color,
+        login_design: loginDesign ?? undefined,
+        login_profile: loginDesign && loginProfile ? { ...loginProfile, year_founded: loginProfile.year_founded || null } : undefined,
       };
 
       const response = await api.createTenant(tenantDataWithModules);
@@ -633,6 +675,8 @@ export default function TenantsNew() {
         setBrandingLogoPreview(null);
         setBrandingColors({ ...DEFAULT_COLORS });
         setColorHexInputs({ ...DEFAULT_COLORS });
+        setLoginDesign(null);
+        setLoginProfile(null);
 
         // Close create dialog and show credentials
         setIsCreateDialogOpen(false);
@@ -1187,12 +1231,14 @@ export default function TenantsNew() {
       {/* ── Dialogs follow below (unchanged) ────────────────────────────── */}
 
 {/* Create Tenant Dialog */ }
-<Dialog open={ isCreateDialogOpen } onOpenChange = {(open) => {
+<Dialog open={ isCreateDialogOpen && !isStudioOpen } onOpenChange = {(open) => {
   setIsCreateDialogOpen(open);
   if (!open) {
     setApiError(null);
     setFormErrors({});
     setCreationStep(1);
+    setLoginDesign(null);
+    setLoginProfile(null);
     setBrandingLogo(null);
     setBrandingLogoPreview(null);
     setBrandingColors({ ...DEFAULT_COLORS });
@@ -1203,10 +1249,11 @@ export default function TenantsNew() {
     <DialogHeader>
     <DialogTitle>Create New Tenant </DialogTitle>
       <DialogDescription>
-              Step { creationStep } of 3: {
+              Step { creationStep } of 4: {
   creationStep === 1 ? "Organization Details" :
     creationStep === 2 ? "Admin User Setup" :
-      "Select Modules & Pricing"
+      creationStep === 3 ? "Select Modules & Pricing" :
+        "Their Login Page"
 }
 </DialogDescription>
   </DialogHeader>
@@ -1238,6 +1285,7 @@ className = "text-destructive/60 hover:text-destructive"
   <div className={ `h-2 flex-1 rounded ${creationStep >= 1 ? "bg-primary" : "bg-muted"}` } />
     < div className = {`h-2 flex-1 rounded ${creationStep >= 2 ? "bg-primary" : "bg-muted"}`} />
       < div className = {`h-2 flex-1 rounded ${creationStep >= 3 ? "bg-primary" : "bg-muted"}`} />
+      <div className={`h-2 flex-1 rounded ${creationStep >= 4 ? "bg-primary" : "bg-muted"}`} />
         </div>
 
 {/* Step 1: Organization Details */ }
@@ -1818,6 +1866,41 @@ onClick = { handleDeselectAllModules }
 </div>
 )}
 
+{/* Step 4: Their own login page (Login Studio) */}
+{creationStep === 4 && (
+  <div className="space-y-4">
+    <div className="rounded-xl border border-border overflow-hidden">
+      {loginDesign ? (
+        <div className="bg-muted/30">
+          <LoginDesignView
+            design={loginDesign}
+            mode="preview"
+            brand={{ name: newTenant.name || "Institution", logoUrl: brandingLogoPreview, primary: brandingColors.primary_color, secondary: brandingColors.secondary_color }}
+          />
+        </div>
+      ) : (
+        <div className="p-6 text-center bg-muted/30">
+          <p className="text-sm font-semibold">Give {newTenant.name || "them"} their own login page</p>
+          <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+            Instead of the standard Fynix login, staff will sign in on a page designed for this institution — their logo on the building,
+            their colours and wording that fits what they do. The AI designs it; you can regenerate until you're happy.
+          </p>
+        </div>
+      )}
+    </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <Button type="button" onClick={() => setIsStudioOpen(true)}>
+        {loginDesign ? "Change in Login Studio" : "Design their login page"}
+      </Button>
+      {loginDesign ? (
+        <Button type="button" variant="ghost" onClick={() => { setLoginDesign(null); setLoginProfile(null); }}>Use the standard login instead</Button>
+      ) : (
+        <span className="text-xs text-muted-foreground">Optional — you can also do this later from the institution's details.</span>
+      )}
+    </div>
+  </div>
+)}
+
 <DialogFooter>
   <div className="flex justify-between w-full" >
     <Button
@@ -1828,7 +1911,7 @@ onClick = { creationStep === 1 ? () => setIsCreateDialogOpen(false) : handlePrev
 </Button>
 
 {
-  creationStep < 3 ? (
+  creationStep < 4 ? (
     <Button onClick= { handleNextStep } >
     Next < ArrowRight className = "ml-2 h-4 w-4" />
       </Button>
@@ -1850,6 +1933,46 @@ onClick = { creationStep === 1 ? () => setIsCreateDialogOpen(false) : handlePrev
   </DialogFooter>
   </DialogContent>
   </Dialog>
+
+<LoginStudio
+  open={isStudioOpen}
+  onClose={() => setIsStudioOpen(false)}
+  brand={{ name: newTenant.name || "Institution", logoUrl: brandingLogoPreview, primary: brandingColors.primary_color, secondary: brandingColors.secondary_color }}
+  logoFile={brandingLogo}
+  initialProfile={emptyLoginProfile({
+    name: newTenant.name, city: newTenant.city ?? "", state: newTenant.state ?? "",
+    support_phone: newTenant.phone ?? "", support_email: newTenant.email ?? "",
+    ...(loginProfile ?? {}),
+    ...(loginProfile ? { name: newTenant.name } : {}),
+  })}
+  initialDesign={loginDesign}
+  onUse={(d, prof) => { setLoginDesign(d); setLoginProfile(prof); setIsStudioOpen(false); showToast.success("Login page ready", { description: "It goes live when you create the institution." }); }}
+/>
+
+{editStudio && (
+  <LoginStudio
+    open
+    onClose={() => setEditStudio(null)}
+    brand={{
+      name: editStudio.tenant.name,
+      logoUrl: editStudio.tenant.branding?.logo_thumb_url || editStudio.tenant.logo_url || null,
+      primary: editStudio.tenant.branding?.primary_color || "#0A2540",
+      secondary: editStudio.tenant.branding?.secondary_color || "#00A8A8",
+    }}
+    initialProfile={editStudio.profile}
+    initialDesign={editStudio.design}
+    useLabel="Save & publish"
+    onUse={async (d, prof) => {
+      try {
+        await api.saveTenantLoginDesign(editStudio.tenant.id, d, { ...prof, year_founded: prof.year_founded || null });
+        showToast.success("Login page published", { description: `${editStudio.tenant.name} staff will see it the next time they open their login page.` });
+        setEditStudio(null);
+      } catch (e) {
+        showToast.error("Couldn't save the login page", { description: (e as ApiError)?.message || "Please try again." });
+      }
+    }}
+  />
+)}
 
 {/* Credentials Dialog */ }
 <Dialog open={ isCredentialsDialogOpen } onOpenChange = { setIsCredentialsDialogOpen } >
@@ -1938,7 +2061,7 @@ className = "flex items-center gap-1 rounded-md border border-primary/30 bg-back
     </Dialog>
 
 {/* Tenant Details Dialog */ }
-<Dialog open={isDetailsDialogOpen} onOpenChange={(open) => { setIsDetailsDialogOpen(open); if (!open) setDangerZoneOpen(false); }}>
+<Dialog open={isDetailsDialogOpen && !editStudio} onOpenChange={(open) => { setIsDetailsDialogOpen(open); if (!open) setDangerZoneOpen(false); }}>
   <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 gap-0" aria-describedby={undefined}>
     <DialogTitle className="sr-only">{selectedTenant ? `${selectedTenant.name} — Tenant Details` : "Tenant Details"}</DialogTitle>
     { selectedTenant && (
@@ -2751,6 +2874,9 @@ style = {{ backgroundColor: selectedTenant.branding.accent_color }}
           < Button size = "sm" onClick = {() => { setIsDetailsDialogOpen(false); openManageModulesDialog(selectedTenant); }}>
             <Plus className="mr-2 h-3.5 w-3.5" /> Manage Modules
               </Button>
+          <Button size="sm" variant="outline" disabled={loadingStudioFor === selectedTenant.id} onClick={() => openLoginStudioFor(selectedTenant)}>
+            {loadingStudioFor === selectedTenant.id ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-2 h-3.5 w-3.5" />} Login Page
+          </Button>
               </div>
               </div>
               </>

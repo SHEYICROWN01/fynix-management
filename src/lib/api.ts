@@ -199,6 +199,9 @@ interface CreateTenantData {
     secondary_color?: string;
     accent_color?: string;
     background_color?: string;
+    // Login Studio: the institution's own login page + the business profile it was generated from
+    login_design?: unknown;
+    login_profile?: unknown;
     // ✨ NEW: Module subscriptions
     modules: Array<{
         module_id: number;
@@ -584,6 +587,8 @@ class ApiService {
         if (data.secondary_color) formData.append("secondary_color", data.secondary_color);
         if (data.accent_color) formData.append("accent_color", data.accent_color);
         if (data.background_color) formData.append("background_color", data.background_color);
+        if (data.login_design) formData.append("login_design", JSON.stringify(data.login_design));
+        if (data.login_profile) formData.append("login_profile", JSON.stringify(data.login_profile));
 
         // Modules — send as JSON array string or repeated fields
         data.modules.forEach((mod, index) => {
@@ -619,6 +624,67 @@ class ApiService {
             if (error && typeof error === "object" && "message" in error) throw error;
             throw { success: false, message: "Network error. Please check your connection." };
         }
+    }
+
+    /** POST with multipart/form-data (file uploads). Same error handling as createTenant. */
+    private async multipart<T>(endpoint: string, formData: FormData): Promise<T> {
+        const token = this.getToken();
+        const headers: Record<string, string> = { Accept: "application/json" };
+        if (token) headers.Authorization = `Bearer ${token}`;
+        let response: Response;
+        try {
+            response = await fetch(`${API_BASE_URL}${endpoint}`, { method: "POST", headers, body: formData });
+        } catch {
+            throw { success: false, message: "Network error. Please check your connection." };
+        }
+        const result = await response.json().catch(() => ({ success: false, message: `Server error (${response.status}).` }));
+        if (!response.ok) {
+            if (response.status === 401) {
+                this.removeToken();
+                if (this.onUnauthorized) this.onUnauthorized();
+            }
+            throw result;
+        }
+        return result as T;
+    }
+
+    // ── Login Studio ────────────────────────────────────────────────────────
+
+    /** Generate (or regenerate) an AI login page design from the business profile. */
+    async generateLoginDesign(
+        profile: Record<string, unknown>,
+        opts: { attempt: number; layout?: string | null; avoidHeadlines?: string[]; logo?: File | null },
+    ): Promise<{ success: boolean; message: string; data: { design: unknown; notes: string[]; profile: Record<string, unknown> } }> {
+        const fd = new FormData();
+        for (const [k, v] of Object.entries(profile)) {
+            if (v === undefined || v === null || v === "") continue;
+            if (Array.isArray(v)) v.forEach((x, i) => fd.append(`${k}[${i}]`, String(x)));
+            else fd.append(k, String(v));
+        }
+        fd.append("attempt", String(opts.attempt));
+        if (opts.layout) fd.append("layout", opts.layout);
+        (opts.avoidHeadlines ?? []).slice(-6).forEach((h, i) => fd.append(`avoid_headlines[${i}]`, h));
+        if (opts.logo) fd.append("logo", opts.logo);
+        return this.multipart("/admin/login-designs/generate", fd);
+    }
+
+    /** Upload a real photo for the login page hero picture. */
+    async uploadLoginHero(file: File): Promise<{ success: boolean; data: { url: string } }> {
+        const fd = new FormData();
+        fd.append("image", file);
+        return this.multipart("/admin/login-designs/hero-image", fd);
+    }
+
+    async getTenantLoginDesign(id: number): Promise<{ success: boolean; data: { login_design: unknown; login_profile: Record<string, unknown> | null } }> {
+        return this.request(`/admin/tenants/${id}/login-design`);
+    }
+
+    /** `design: null` puts the institution back on the standard login page. */
+    async saveTenantLoginDesign(id: number, design: unknown, profile?: Record<string, unknown> | null) {
+        return this.request<{ success: boolean; message: string; data: { login_design: unknown; login_profile: unknown } }>(`/admin/tenants/${id}/login-design`, {
+            method: "PUT",
+            body: JSON.stringify({ login_design: design, login_profile: profile ?? null }),
+        });
     }
 
     async getTenant(id: number): Promise<TenantResponse> {

@@ -5,7 +5,7 @@ import {
   MessageSquare, BarChart3, Bell, Users, Settings,
   Package, Layers, Shield, HeartPulse,
   ChevronLeft, ChevronRight, LogOut, X, type LucideIcon,
-  DollarSign,
+  DollarSign, Radio, Sparkles,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { emailApi } from "@/lib/api";
@@ -44,6 +44,12 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    label: "Marketing",
+    items: [
+      { title: "AI Marketing Office", icon: Sparkles, href: "/marketing" },
+    ],
+  },
+  {
     label: "Finance",
     items: [
       { title: "Finance Center", icon: DollarSign, href: "/accounting" },
@@ -53,6 +59,7 @@ const navSections: NavSection[] = [
     label: "System",
     items: [
       { title: "Security & Logs", icon: Shield, href: "/security" },
+      { title: "System Monitor", icon: Radio, href: "/system-monitor" },
       { title: "System Health", icon: HeartPulse, href: "/system-health" },
       { title: "Notifications", icon: Bell, href: "/email", badge: "email" },
       { title: "System Users", icon: Users, href: "/users" },

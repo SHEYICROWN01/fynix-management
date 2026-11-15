@@ -29,3 +29,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local-only: session files, raw design art, notes
+.claude/
+design-assets/
+my-suggestion/

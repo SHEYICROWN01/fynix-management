@@ -86,6 +86,12 @@ const InvestorCenter = lazy(() => import("./pages/accounting/InvestorCenter"));
 const CompanyAccounts = lazy(() => import("./pages/accounting/CompanyAccounts"));
 const OwnersDraw = lazy(() => import("./pages/accounting/OwnersDraw"));
 const RevenueConfig = lazy(() => import("./pages/accounting/RevenueConfig"));
+const SystemMonitor = lazy(() => import("./pages/SystemMonitor"));
+const MarketingLayout = lazy(() => import("./pages/marketing/MarketingLayout"));
+const AiMarketingOffice = lazy(() => import("./pages/AiMarketingOffice/AiMarketingOffice"));
+const MarketingOverview = lazy(() => import("./pages/marketing/MarketingOverview"));
+const MarketingLeads = lazy(() => import("./pages/marketing/MarketingLeads"));
+const MarketingComingSoon = lazy(() => import("./pages/marketing/MarketingComingSoon"));
 
 // ── Loading spinner ─────────────────────────────────────────────────────────
 
@@ -167,6 +173,13 @@ const App = () => (
                 <Route path="/accounting/accounts" element={<ProtectedRoute><CompanyAccounts /></ProtectedRoute>} />
                 <Route path="/accounting/owners-draw" element={<ProtectedRoute><OwnersDraw /></ProtectedRoute>} />
                 <Route path="/accounting/revenue-config" element={<ProtectedRoute><RevenueConfig /></ProtectedRoute>} />
+                <Route path="/system-monitor" element={<ProtectedRoute><SystemMonitor /></ProtectedRoute>} />
+                <Route path="/marketing" element={<ProtectedRoute><MarketingLayout /></ProtectedRoute>}>
+                  <Route index element={<AiMarketingOffice />} />
+                  <Route path="overview" element={<MarketingOverview />} />
+                  <Route path="leads" element={<MarketingLeads />} />
+                  <Route path=":section" element={<MarketingComingSoon />} />
+                </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
